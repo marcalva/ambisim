@@ -240,6 +240,9 @@ int gex_prob_sample_gene(gex_prob_t *gp, uint16_t k, gene_t **gene){
     assert(gene_id);
 
     int g_ix = str_map_ix(gp->anno->gene_ix, gene_id);
+    if (g_ix < 0)
+        return err_msg(-1, 0, "gex_prob_sample_gene: gene '%s' given in prob "
+                "file but not present in GTF", gene_id);
 
     // get gene from index
     *gene = mv_i(&gp->anno->gix2gene, g_ix);
@@ -260,6 +263,7 @@ int gex_prob_sample_tx(gex_prob_t *gp, gene_t *gene, isoform_t **iso){
     int tx_ix = cat_ds_uni_rand(0, n_tx);
 
     kbtree_t(kb_iso) *bt = gene->bt_isoforms;
+    assert(bt);
     int kb_ix = 0;
     kbitr_t itr;
     kb_itr_first(kb_iso, bt, &itr);
@@ -377,6 +381,7 @@ int gex_sample_read(sc_sim_t *sc_sim, uint16_t k, int rsam, rna_read_t *rna_read
     // first get the chromosome name of the gene from the GTF file
     int rid = gene->chrm;
     const char *c_name = str_map_str(gp->anno->chrm_ix, rid);
+    assert(c_name);
     seq_ranges_t *seq_ranges = NULL;
     if (fa_seq_seq_ranges(fa, c_name, ranges, &seq_ranges) < 0)
         return -1;

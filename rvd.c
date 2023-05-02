@@ -530,16 +530,23 @@ int seq_range_get_vars(seq_range_t *seq_rng, const char *chr, g_var_t *gv){
     if (seq_rng == NULL || gv == NULL)
         return err_msg(-1, 0, "seq_range_get_vars: argument is null");
 
+    int n_vars = 0;
     ml_t(vcfr_list) vars;
     ml_init(vcfr_list, &vars);
 
     int32_t beg = seq_rng->range.beg, end = seq_rng->range.end;
     int rret = g_var_get_region_vars(gv, chr, beg, end, &vars);
-    if (rret < 0)
+    // if chromosome is not found, skip without warning
+    if (rret == -1) {
+        ml_free(vcfr_list, &vars);
+        return n_vars;
+    }
+    if (rret < -1) {
+        ml_free(vcfr_list, &vars);
         return err_msg(-1, 0, "seq_range_get_vars: failed to get regional variants");
+    }
 
     // add seq_allele_t objects of overlapping variants
-    int n_vars = 0;
     ml_node_t(vcfr_list) *node;
     for (node = ml_begin(&vars); node; node = ml_node_next(node)){
         var_t var = ml_node_val(node);
@@ -1128,7 +1135,7 @@ int fa_seq_seq_range(fa_seq_t *fa, const char *c_name, int_range_t range,
     int chrm_len = faidx_seq_len(fa->fai, c_name);
     if (chrm_len < 0){
         return err_msg(-1, 0, "fa_seq_seq_range: chromosome %s not found in "
-                "fasta. Check that all GTF chromosomes are present in fasta.", 
+                "fasta. Check that given chromosomes are present in fasta.", 
                 c_name);
     }
     int chrm_ix = str_map_ix(fa->c_names, (char *)c_name);

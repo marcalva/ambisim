@@ -172,6 +172,7 @@ int atac_prob_sample_read(sc_sim_t *sc_sim, uint16_t k, int peak, int rsam, atac
     uint32_t read_pair_len = 2 * read_len + ins_size;
 
     // get sampling region
+    int n_tries = 0, max_tries = 30;
     g_region pk_reg;
     char *c_name;
     if (peak){
@@ -182,7 +183,10 @@ int atac_prob_sample_read(sc_sim_t *sc_sim, uint16_t k, int peak, int rsam, atac
                 return -1;
             pk_len = pk_reg.end - pk_reg.start;
             c_name = str_map_str(ap->peaks->chr_map, pk_reg.rid);
-        } while (pk_len < read_pair_len);
+            ++n_tries;
+        } while (pk_len < read_pair_len &&
+                 faidx_has_seq(fa->fai, c_name) == 0 &&
+                 n_tries < max_tries);
     } else {
         // otherwise, sample a region from the genome. No 'N' bp allowed
         // TODO sample peak size
@@ -192,9 +196,12 @@ int atac_prob_sample_read(sc_sim_t *sc_sim, uint16_t k, int peak, int rsam, atac
                 return -1;
             c_name = str_map_str(fa->c_names, pk_reg.rid);
             n_n = fa_seq_n_n(fa, c_name, pk_reg.start, pk_reg.end);
-        } while (n_n > 0);
-        
+            ++n_tries;
+        } while (n_n > 0 && n_tries < max_tries);
     }
+    if (n_tries == max_tries)
+        return err_msg(-1, 0, "atac_prob_sample_read: could not sample from genome. "
+                "Make sure chromosomes in peak file overlap with fasta.");
 
     // sample a read pair, each of length read_len, separated by 
     // sample the read inside the peak region
