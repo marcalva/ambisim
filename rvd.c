@@ -535,7 +535,8 @@ int seq_range_get_vars(seq_range_t *seq_rng, const char *chr, g_var_t *gv){
 
     int32_t beg = seq_rng->range.beg, end = seq_rng->range.end;
     int rret = g_var_get_region_vars(gv, chr, beg, end, &vars);
-    if (rret < 0) return -1;
+    if (rret < 0)
+        return err_msg(-1, 0, "seq_range_get_vars: failed to get regional variants");
 
     // add seq_allele_t objects of overlapping variants
     int n_vars = 0;
@@ -867,7 +868,7 @@ int seq_ranges_var(seq_ranges_t *seq_rngs, const char *chr, g_var_t *gv){
 int seq_ranges_sample_allele(seq_ranges_t *seq_rngs, bcf_hdr_t *vcf_hdr, 
         int rsam){
     if (seq_rngs == NULL || vcf_hdr == NULL)
-        return err_msg(-1, 0, "seq_ranges_var: argument is null");
+        return err_msg(-1, 0, "seq_ranges_sample_allele: argument is null");
 
     size_t i, n_rng = mv_size(&seq_rngs->rv);
     for (i = 0; i < n_rng; ++i){
@@ -881,7 +882,7 @@ int seq_ranges_sample_allele(seq_ranges_t *seq_rngs, bcf_hdr_t *vcf_hdr,
 
 int seq_ranges_set_allele_seq(seq_ranges_t *seq_rngs, bcf_hdr_t *vcf_hdr){
     if (seq_rngs == NULL || vcf_hdr == NULL)
-        return err_msg(-1, 0, "seq_ranges_var: argument is null");
+        return err_msg(-1, 0, "seq_ranges_set_allele_seq: argument is null");
 
     size_t i, n_rng = mv_size(&seq_rngs->rv);
     for (i = 0; i < n_rng; ++i){
