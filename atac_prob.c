@@ -243,6 +243,10 @@ int atac_prob_sample_read(sc_sim_t *sc_sim, uint16_t k, int peak, int rsam, atac
         if (read_seq == NULL)
             return err_msg(-1, 0, "atac_prob_sample_read: failed to get range from fasta");
 
+        if (seq_ranges_check_len(read_seq) == 0)
+            return err_msg(-1, 0, "atac_prob_sample_read: str len does not"
+                    "match given range len after fa_seq_seq_ranges");
+
         assert(read_seq->len > 0);
         // get overlapping variants of the subset
         if (seq_ranges_var(read_seq, c_name, gv) < 0)
@@ -268,7 +272,7 @@ int atac_prob_sample_read(sc_sim_t *sc_sim, uint16_t k, int peak, int rsam, atac
 
         if (seq_ranges_check_len(read_seq) == 0)
             return err_msg(-1, 0, "atac_prob_sample_read: str len does not"
-                    "match given range len");
+                    "match given range len after seq error");
         pair->pair[i].seq_ranges = read_seq;
         pair->pair[i].peak = peak ? 1 : 0;
         uint32_t bp_i, rlen = read_seq->len;
@@ -430,11 +434,20 @@ int atac_pair_set_seq(atac_pair_t *atac_pair, const char *bc_name) {
             assert(sr->seq);
             char *src_seq = sr->seq;
             size_t src_len = (size_t)(sr->range.end - sr->range.beg);
+            if (src_len != strlen(src_seq)) {
+                fprintf(stderr, "error in src_seq='%s'\n", src_seq);
+                return err_msg(-1, 0, "atac_pair_set_seq: sequence of range is "
+                        "malformed");
+            }
             strncat(seq_c[i], src_seq, src_len);
             src_tot_len += src_len;
         }
         assert(src_tot_len == seq_len);
-        assert(src_tot_len == strlen(seq_c[i]));
+        if (src_tot_len != strlen(seq_c[i])) {
+            return err_msg(-1, 0, "atac_pair_set_seq: range length %zu "
+                    "does not match sequence length %zu (%s)", src_tot_len,
+                    strlen(seq_c[i]), seq_c[i]);
+        }
 
         // read is already rev complemented so don't need to flip strand
 
