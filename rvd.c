@@ -1148,10 +1148,10 @@ int fa_seq_seq_range(fa_seq_t *fa, const char *c_name, int_range_t range,
     assert(range.beg < range.end);
 
     // check that range.end < chromosome length
-    int chrm_len = faidx_seq_len(fa->fai, c_name);
+    int64_t chrm_len = faidx_seq_len64(fa->fai, c_name);
     if (chrm_len < 0){
         return err_msg(-1, 0, "fa_seq_seq_range: chromosome %s not found in "
-                "fasta. Check that given chromosomes are present in fasta.", 
+                "fasta", 
                 c_name);
     }
     int chrm_ix = str_map_ix(fa->c_names, (char *)c_name);
@@ -1160,15 +1160,27 @@ int fa_seq_seq_range(fa_seq_t *fa, const char *c_name, int_range_t range,
         return err_msg(-1, 0, "fa_seq_seq_range: range end %i is larger than "
                 "size of chromosome %i", range.end, chrm_len);
 
+    assert(range.end >= range.beg);
     // duplicate fasta sequence at [beg,end)
     size_t qlen = (size_t)(range.end - range.beg);
+    if (qlen == 0)
+        err_msg(0, 1, "fa_seq_seq_range: range length is 0");
+
     char *qseq = calloc(qlen + 1, sizeof(char));
     if (qseq == NULL)
         return err_msg(-1, 0, "fa_seq_seq_range: %s", strerror(errno));
 
     const char *fa_seq = mv_i(&fa->seqs, chrm_ix);
+    if (fa_seq == NULL)
+        return err_msg(-1, 0, "fa_seq_seq_range: fasta for contig '%s' "
+                "is null", c_name);
     memcpy(qseq, fa_seq + range.beg, qlen);
     qseq[qlen] = '\0';
+    if (strlen(qseq) == 0) {
+        err_msg(0, 1, "fa_seq_seq_range: query sequence has length 0 "
+                "for region '%s:%i-%i'. Fasta contig length is '%zu",
+                c_name, range.beg, range.end, strlen(fa_seq));
+    }
 
     // create output
     seq_range_t *sr_out = malloc(sizeof(seq_range_t));
