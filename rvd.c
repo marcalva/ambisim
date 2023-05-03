@@ -917,6 +917,22 @@ int seq_ranges_seq_error(seq_ranges_t *seq_rngs, double prob) {
     return 0;
 }
 
+int seq_ranges_check_len(seq_ranges_t *seq_rngs) {
+    if (seq_rngs == NULL)
+        return err_msg(-1, 0, "seq_ranges_check_len: argument is null");
+    size_t i, n_v = mv_size(&seq_rngs->rv), seq_len = 0, str_len = 0;
+    for (i = 0; i < n_v; ++i) {
+        seq_range_t sr = mv_i(&seq_rngs->rv, i);
+        int sr_len = sr.range.end - sr.range.beg;
+        seq_len += sr_len;
+        str_len += strlen(sr.seq);
+    }
+    if (seq_len != str_len)
+        return 0;
+    else
+        return 1;
+}
+
 /*******************************************************************************
  * chromosome
  ******************************************************************************/
@@ -1155,16 +1171,16 @@ int fa_seq_seq_range(fa_seq_t *fa, const char *c_name, int_range_t range,
     qseq[qlen] = '\0';
 
     // create output
-    seq_range_t *rng_to_add = malloc(sizeof(seq_range_t));
-    if (rng_to_add == NULL)
+    seq_range_t *sr_out = malloc(sizeof(seq_range_t));
+    if (sr_out == NULL)
         return err_msg(-1, 0, "fa_seq_seq_range: %s", strerror(errno));
-    seq_range_init(rng_to_add);
+    seq_range_init(sr_out);
 
-    rng_to_add->range = range;
-    rng_to_add->seq = qseq;
+    sr_out->range = range;
+    sr_out->seq = qseq;
 
     // put range in output
-    *seq_rng = rng_to_add;
+    *seq_rng = sr_out;
 
     return 0;
 }

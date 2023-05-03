@@ -195,6 +195,7 @@ int atac_prob_sample_read(sc_sim_t *sc_sim, uint16_t k, int peak, int rsam, atac
             if (fa_seq_rand_range(fa, read_pair_len + 600, '.', &pk_reg) < 0)
                 return -1;
             c_name = str_map_str(fa->c_names, pk_reg.rid);
+            assert(c_name != NULL);
             n_n = fa_seq_n_n(fa, c_name, pk_reg.start, pk_reg.end);
             ++n_tries;
         } while (n_n > 0 && n_tries < max_tries);
@@ -206,10 +207,10 @@ int atac_prob_sample_read(sc_sim_t *sc_sim, uint16_t k, int peak, int rsam, atac
     // sample a read pair, each of length read_len, separated by 
     // sample the read inside the peak region
     int pk_len = pk_reg.end - pk_reg.start;
-    int q_len = pk_len - (int)read_pair_len + 1;
-    assert(q_len > 0);
-    int pos_sample = rand() % q_len;
-    assert(pos_sample < q_len);
+    int qreg_len = pk_len - (int)read_pair_len + 1;
+    assert(qreg_len > 0);
+    int pos_sample = rand() % qreg_len;
+    assert(pos_sample < qreg_len);
     int beg1 = pk_reg.start + pos_sample, end1 = beg1 + read_len;
     int beg2 = end1 + ins_size, end2 = beg2 + read_len;
 
@@ -242,6 +243,7 @@ int atac_prob_sample_read(sc_sim_t *sc_sim, uint16_t k, int peak, int rsam, atac
         if (read_seq == NULL)
             return err_msg(-1, 0, "atac_prob_sample_read: failed to get range from fasta");
 
+        assert(read_seq->len > 0);
         // get overlapping variants of the subset
         if (seq_ranges_var(read_seq, c_name, gv) < 0)
             return -1;
@@ -264,6 +266,9 @@ int atac_prob_sample_read(sc_sim_t *sc_sim, uint16_t k, int peak, int rsam, atac
                 return -1;
         }
 
+        if (seq_ranges_check_len(read_seq) == 0)
+            return err_msg(-1, 0, "atac_prob_sample_read: str len does not"
+                    "match given range len");
         pair->pair[i].seq_ranges = read_seq;
         pair->pair[i].peak = peak ? 1 : 0;
         uint32_t bp_i, rlen = read_seq->len;
@@ -412,6 +417,7 @@ int atac_pair_set_seq(atac_pair_t *atac_pair, const char *bc_name) {
     for (i = 0; i < 2; ++i) {
         atac_read_t *atac_read = atac_pair->pair + i;
         seq_len = atac_read->seq_ranges->len;
+        assert(seq_len > 0);
         seq_c[i] = malloc((seq_len + 1) * sizeof(char));
         if (seq_c[i] == NULL)
             return err_msg(-1, 0, "atac_pair_set_seq: %s", strerror(errno));
@@ -428,6 +434,7 @@ int atac_pair_set_seq(atac_pair_t *atac_pair, const char *bc_name) {
             src_tot_len += src_len;
         }
         assert(src_tot_len == seq_len);
+        assert(src_tot_len == strlen(seq_c[i]));
 
         // read is already rev complemented so don't need to flip strand
 

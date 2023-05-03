@@ -330,6 +330,8 @@ int seq_ranges_set_allele_seq(seq_ranges_t *seq_rngs, bcf_hdr_t *vcf_hdr);
 
 int seq_ranges_seq_error(seq_ranges_t *seq_rngs, double prob);
 
+int seq_ranges_check_len(seq_ranges_t *seq_rngs);
+
 /*******************************************************************************
  * chromosome
  ******************************************************************************/
