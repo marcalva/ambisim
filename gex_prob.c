@@ -492,7 +492,7 @@ int rna_read_set_name(rna_read_t *rna_read, il_qname_t *names){
             return err_msg(-1, 0, "rna_read_set_name: %s", strerror(errno));
 
         // set read name in name_a
-        s_len[i] = snprintf(name_a[i], name_size[i], "@%s %i:N:0:%s+%s",
+        s_len[i] = snprintf(name_a[i], name_size[i], "%s %i:N:0:%s+%s",
                 base_name, i+1, i5, i7);
         if (s_len[i] < 0)
             return err_msg(-1, 0, "rna_read_set_name: failed to convert string");
