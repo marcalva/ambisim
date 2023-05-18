@@ -445,6 +445,10 @@ void int_range_init(int_range_t *range){
     range->beg = range->end = -1;
 }
 
+int int_range_valid(int_range_t range) {
+    return range.beg >= 0 && range.beg <= range.end;
+}
+
 void seq_range_init(seq_range_t *seq_rng){
     if (seq_rng == NULL) return;
     int_range_init(&seq_rng->range);
@@ -1144,36 +1148,30 @@ int fa_seq_seq_range(fa_seq_t *fa, const char *c_name, int_range_t range,
         return err_msg(-1, 0, "fa_seq_seq_range: argument is null");
 
     // sanity check on input
-    assert(range.beg >= 0);
-    assert(range.beg < range.end);
+    if (!int_range_valid(range))
+        return err_msg(-1, 0, "fa_seq_seq_range: range [%i,%i) is invalid",
+                range.beg, range.end);
 
     // check that range.end < chromosome length
     int64_t chrm_len = faidx_seq_len64(fa->fai, c_name);
-    if (chrm_len < 0){
+    if (chrm_len < 0)
         return err_msg(-1, 0, "fa_seq_seq_range: chromosome %s not found in "
-                "fasta", 
-                c_name);
-    }
+                "fasta", c_name);
     int chrm_ix = str_map_ix(fa->c_names, (char *)c_name);
 
     if (range.end >= chrm_len)
         return err_msg(-1, 0, "fa_seq_seq_range: range end %i is larger than "
-                "size of chromosome %i", range.end, chrm_len);
+                "chromosome '%i' size", range.end, chrm_len);
 
-    assert(range.end >= range.beg);
     // duplicate fasta sequence at [beg,end)
-    size_t qlen = (size_t)(range.end - range.beg);
-    if (qlen == 0)
-        err_msg(0, 1, "fa_seq_seq_range: range length is 0");
-
+    int qlen = range.end - range.beg;
     char *qseq = calloc(qlen + 1, sizeof(char));
     if (qseq == NULL)
         return err_msg(-1, 0, "fa_seq_seq_range: %s", strerror(errno));
 
     const char *fa_seq = mv_i(&fa->seqs, chrm_ix);
     if (fa_seq == NULL)
-        return err_msg(-1, 0, "fa_seq_seq_range: fasta for contig '%s' "
-                "is null", c_name);
+        return err_msg(-1, 0, "fa_seq_seq_range: contig '%s' is null", c_name);
     memcpy(qseq, fa_seq + range.beg, qlen);
     qseq[qlen] = '\0';
     if (strlen(qseq) == 0) {

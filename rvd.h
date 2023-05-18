@@ -229,6 +229,9 @@ void seq_allele_init(seq_allele_t *sa);
 // Initialize int_range_t to -1 values.
 void int_range_init(int_range_t *range);
 
+// return 1 if range is valid, -1 if invalid
+int int_range_valid(int_range_t range);
+
 // subset the range by index
 int int_range_subset(int_range_t *int_rng, int_range_t *out, size_t pos, 
         size_t len);

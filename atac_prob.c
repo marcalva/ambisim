@@ -167,9 +167,8 @@ int atac_prob_sample_read(sc_sim_t *sc_sim, uint16_t k, int peak, int rsam, atac
         return err_msg(-1, 0, "atac_prob_sample_read: k=%u must be < %u", 
                 k, ap->probs_len);
 
-    // TODO: create a better random insert size sample
-    int32_t ins_size = (rand() % (150 + read_len)) - read_len;
-    uint32_t read_pair_len = 2 * read_len + ins_size;
+    int32_t ins_size = rand() % 150;
+    uint32_t read_pair_len = (2 * read_len) + ins_size;
 
     // get sampling region
     int n_tries = 0, max_tries = 30;
@@ -178,22 +177,26 @@ int atac_prob_sample_read(sc_sim_t *sc_sim, uint16_t k, int peak, int rsam, atac
     if (peak){
         // if read is in peak, sample a peak
         uint32_t pk_len;
+        int pk_invalid = 1;
         do {
             if (atac_prob_sample_peak(ap, k, &pk_reg) < 0)
                 return -1;
             pk_len = pk_reg.end - pk_reg.start;
             c_name = str_map_str(ap->peaks->chr_map, pk_reg.rid);
             ++n_tries;
-        } while (pk_len < read_pair_len &&
-                 faidx_has_seq(fa->fai, c_name) == 0 &&
-                 n_tries < max_tries);
+            pk_invalid = (pk_len < read_pair_len) ||
+                (faidx_has_seq(fa->fai, c_name) == 0);
+        } while (pk_invalid && n_tries < max_tries);
     } else {
         // otherwise, sample a region from the genome. No 'N' bp allowed
         // TODO sample peak size
         int n_n;
+        uint32_t pk_len;
         do {
             if (fa_seq_rand_range(fa, read_pair_len + 600, '.', &pk_reg) < 0)
                 return -1;
+            pk_len = pk_reg.end - pk_reg.start;
+            assert(pk_len >= read_pair_len);
             c_name = str_map_str(fa->c_names, pk_reg.rid);
             assert(c_name != NULL);
             n_n = fa_seq_n_n(fa, c_name, pk_reg.start, pk_reg.end);
@@ -207,10 +210,14 @@ int atac_prob_sample_read(sc_sim_t *sc_sim, uint16_t k, int peak, int rsam, atac
     // sample a read pair, each of length read_len, separated by 
     // sample the read inside the peak region
     int pk_len = pk_reg.end - pk_reg.start;
-    int qreg_len = pk_len - (int)read_pair_len + 1;
+    int qreg_len = (pk_len - (int)read_pair_len) + 1;
+    if (qreg_len <= 0) {
+        err_msg(-1, 0, "atac_prob_sample_read: qreg_len=%i", qreg_len);
+        err_msg(-1, 0, "atac_prob_sample_read: pk_len=%i", pk_len);
+        err_msg(-1, 0, "atac_prob_sample_read: read_pair_len=%i", read_pair_len);
+    }
     assert(qreg_len > 0);
     int pos_sample = rand() % qreg_len;
-    assert(pos_sample < qreg_len);
     int beg1 = pk_reg.start + pos_sample, end1 = beg1 + read_len;
     int beg2 = end1 + ins_size, end2 = beg2 + read_len;
 
@@ -236,8 +243,8 @@ int atac_prob_sample_read(sc_sim_t *sc_sim, uint16_t k, int peak, int rsam, atac
         int_ranges_init(&read_rng);
         if (int_ranges_add_range(&read_rng, rd_rng[i]) < 0)
             return -1;
+
         seq_ranges_t *read_seq = NULL;
-        // printf("seq for %s:%i-%i\n", c_name, rd_rng[i].beg, rd_rng[i].end);
         if (fa_seq_seq_ranges(fa, c_name, read_rng, &read_seq) < 0)
             return -1;
         if (read_seq == NULL)
