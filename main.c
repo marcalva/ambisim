@@ -415,13 +415,32 @@ int main(int argc, char *argv[]){
         goto cleanup;
     }
 
+    if (sc_sim_intrs_chrms(sc_sim) < 0) {
+        ret = EXIT_FAILURE;
+        goto cleanup;
+    }
+
+    if (sc_sim->chrms->n < 1) {
+        err_msg(-1, 0, "no overlapping chromosomes, make sure naming conventions "
+                "are consistent across input files");
+    }
+    if (verbose) {
+        log_msg("%i overlapping chromosomes:", sc_sim->chrms->n);
+        int i;
+        for (i = 0; i < sc_sim->chrms->n; ++i)
+            log_msg("\t%s", str_map_str(sc_sim->chrms, i));
+    }
+
     if (verbose) log_msg("loading droplet data");
     if (sc_sim_read_file(sc_sim, bc_dat_fn) < 0){
         ret = EXIT_FAILURE;
         goto cleanup;
     }
+    if (verbose) {
+        log_msg("generating %i RNA reads and %i ATAC reads",
+                sc_sim->rna_nreads, sc_sim->atac_nreads);
+    }
 
-    if (verbose) log_msg("generating reads");
     sc_sim->rna_names.n_reads = sc_sim->rna_nreads;
     il_qname_set_step(&sc_sim->rna_names);
     sc_sim->atac_names.n_reads = sc_sim->atac_nreads;

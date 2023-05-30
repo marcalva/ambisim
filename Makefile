@@ -1,24 +1,50 @@
 
-CC = gcc
+CC = $(shell which gcc)
 # CFLAGS = -g -O1 -Wall -Wextra -Wfloat-equal -Wno-unused-function -fsanitize=address -fno-omit-frame-pointer
-CFLAGS = -g -O2 -Wall -Wextra -Wfloat-equal -Wno-unused-function -Wpointer-arith -Wshadow
-
-all : ambisim
+CFLAGS += -g -O2 -Wall -Wextra -Wfloat-equal -Wno-unused-function -Wpointer-arith -Wshadow
 
 HTSDIR = htslib
-include $(HTSDIR)/htslib.mk
-include $(HTSDIR)/htslib_static.mk
 HTSLIB = $(HTSDIR)/libhts.a
 
-CPPFLAGS = -I. -I$(HTSDIR)
+CPPFLAGS += -I. -I$(HTSDIR)
 
 OBJS = main.o rvd.o array_util.o bins.o gtf_anno.o str_util.o overlap.o \
 	   variants.o counts.o region.o sam_read.o gex_prob.o atac_prob.o bc_sim.o
 
-LDFLAGS = -L$(HTSDIR)
-LIBS = -lm -lhts -lpthread $(HTSLIB_static_LIBS)
+ambsim_make : ambisim
 
-ambisim : $(OBJS) $(HTSLIB)
+# $(HTSLIB):
+# 	+cd $(HTSDIR) && $(MAKE) lib-static
+
+-include $(HTSDIR)/htslib.mk
+-include $(HTSDIR)/htslib_static.mk
+
+
+LDFLAGS += -L$(HTSDIR)
+LIBS += -lm -l:libhts.a -lpthread $(HTSLIB_static_LIBS)
+
+hts :
+	echo "building htslib"
+	rm -rf $(HTSDIR)
+	git clone --branch 1.17 https://github.com/samtools/htslib.git $(HTSDIR)
+	cd $(HTSDIR) && git submodule update --init --recursive
+	cd $(HTSDIR) && autoreconf -i && ./configure
+	cd $(HTSDIR) && make lib-static
+
+check_lib :
+	if [ ! -d "$(HTSDIR)" ]; then \
+		echo "htslib subdirectory not found, run 'make hts' first"; \
+		exit 1; \
+	fi
+
+check_static :
+	if [ ! -s "$(HTSDIR)/htslib_static.mk" ]; then \
+		echo "htslib_static.mk not found, run 'make hts' first"; \
+		exit 1; \
+	fi
+
+ambisim : check_lib check_static $(HTSDIR)/libhts.a $(OBJS)
+	echo "building ambisim"
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(OBJS) $(LIBS)
 
 %.o: %.c %.h

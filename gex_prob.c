@@ -332,38 +332,61 @@ int gex_sample_read(sc_sim_t *sc_sim, uint16_t k, int rsam, rna_read_t *rna_read
     if (sc_sim == NULL || rna_read == NULL)
         return err_msg(-1, 0, "gex_sample_read: argument is null");
 
+    // input check
+    if (sc_sim->chrms == NULL || sc_sim->chrms->n < 1)
+        return err_msg(-1, 0, "gex_sample_read: no overlapping chromosomes.");
+
     gex_prob_t *gp = sc_sim->gex_prob;
     g_var_t *gv = sc_sim->gv;
     fa_seq_t *fa = sc_sim->fa;
     assert(gp && gv && fa);
     uint32_t read_len = sc_sim->rna_rd_len;
 
-    // sample a gene and make sure read can fit
+    // sample a gene, make sure read can fit in chr, make sure chr is valid.
+    str_map *gex_chrms = sc_sim->gex_prob->anno->chrm_ix;
     gene_t *gene = NULL;
     int gene_ix;
+    int n_n;
+    int chrm_invalid = 0;
+    int n_tries = 0, max_tries = 30;
     uint32_t gene_cds_len = 0;
     do {
+        if (n_tries >= max_tries)
+            return err_msg(-1, 0, "gex_sample_read: could not sample gene,"
+                    " too many tries");
         if ((gene_ix = gex_prob_sample_gene(gp, k, &gene)) < 0)
-            return -1;
+            return err_msg(-1, 0, "gex_prob_sample_gene: could not sample gene");
         gene_cds_len = gene->min_cds_len;
         assert(gene_cds_len > 0);
-    } while (gene_cds_len < read_len);
+        char *gene_chrm = str_map_str(gex_chrms, gene->chrm);
+        if (gene_chrm == NULL)
+            return err_msg(-1, 0, "gex_sample_read: no chr found for index %i,"
+                    " there is a bug", gene->chrm);
+        chrm_invalid = str_map_ix(sc_sim->chrms, gene_chrm) < 0;
+        n_n = fa_seq_n_n(fa, gene_chrm, gene->beg, gene->end);
+        ++n_tries;
+    } while (gene_cds_len < read_len || n_n > 0 || chrm_invalid);
 
     // sample an isoform and make sure read can fit
     isoform_t *iso = NULL;
     int iso_ix;
     uint32_t iso_cds_len = 0;
+    n_tries = 0;
     do {
+        if (n_tries >= max_tries)
+            return err_msg(-1, 0, "gex_sample_read: could not sample isoform,"
+                    " too many tries");
         if ((iso_ix = gex_prob_sample_tx(gp, gene, &iso)) < 0)
-            return -1;
+            return err_msg(-1, 0, "gex_prob_sample_gene: could not sample isoform");
         iso_cds_len = iso->cds_len;
         assert(iso_cds_len > 0);
+        ++n_tries;
     } while (iso_cds_len < read_len);
 
     // sample whether mature RNA or premature (unspliced RNA)
     int mat_rna = gex_prob_sample_spl(gp, k);
     if (mat_rna < 0)
-        return -1;
+        return err_msg(-1, 0, "gex_prob_sample_gene: could not sample isoform");
 
     // get the position range(s) of the rna
     int_ranges_t ranges;
@@ -371,10 +394,10 @@ int gex_sample_read(sc_sim_t *sc_sim, uint16_t k, int rsam, rna_read_t *rna_read
     // if mature
     if (mat_rna > 0){
         if (isoform_mat_mrna_range(iso, &ranges) < 0)
-            return -1;
+            return err_msg(-1, 0, "gex_prob_sample_gene: failed sample range");
     } else {
         if (isoform_pre_mrna_range(iso, &ranges) < 0)
-            return -1;
+            return err_msg(-1, 0, "gex_prob_sample_gene: failed sample range");
     }
 
     // get the sequence from the range
@@ -384,7 +407,7 @@ int gex_sample_read(sc_sim_t *sc_sim, uint16_t k, int rsam, rna_read_t *rna_read
     assert(c_name);
     seq_ranges_t *seq_ranges = NULL;
     if (fa_seq_seq_ranges(fa, c_name, ranges, &seq_ranges) < 0)
-        return -1;
+        return err_msg(-1, 0, "gex_sample_read: failed to get range from fasta");
     if (seq_ranges == NULL)
         return err_msg(-1, 0, "gex_sample_read: failed to get range from fasta");
 
@@ -402,28 +425,29 @@ int gex_sample_read(sc_sim_t *sc_sim, uint16_t k, int rsam, rna_read_t *rna_read
     seq_ranges_init(subset);
 
     int sret = seq_ranges_subset(seq_ranges, subset, pos_sample, read_len);
-    if (sret < 0) return -1;
+    if (sret < 0)
+        return err_msg(-1, 0, "gex_sample_read: failed to subset range");
 
     // get overlapping variants of the subset
     if (seq_ranges_var(subset, c_name, gv) < 0)
-        return -1;
+        return err_msg(-1, 0, "gex_sample_read: failed to overlap variants");
 
     // sample allele
     int vret = seq_ranges_sample_allele(subset, gv->vcf_hdr, rsam);
     if (vret < 0)
-        return -1;
+        return err_msg(-1, 0, "gex_sample_read: failed to sample alleles");
 
     // set allele in sequence
     vret = seq_ranges_set_allele_seq(subset, gv->vcf_hdr);
     if (vret < 0)
-        return -1;
+        return err_msg(-1, 0, "gex_sample_read: failed to set alleles");
 
     // add sequencing error
     size_t p_ix, p_num = mv_size(&subset->rv);
     for (p_ix = 0; p_ix < p_num; ++p_ix) {
         seq_range_t *sr = &mv_i(&subset->rv, p_ix);
         if (seq_range_seq_error(sr, sc_sim->seq_error) < 0)
-            return -1;
+            return err_msg(-1, 0, "gex_sample_read: failed to set seq error");
     }
 
     rna_read->seq_ranges = subset;
@@ -480,7 +504,7 @@ int rna_read_set_name(rna_read_t *rna_read, il_qname_t *names){
 
     char *base_name = il_qname_get_name(names);
     if (base_name == NULL)
-        return -1;
+        return err_msg(-1, 0, "rna_read_set_name: failed to get query name");
 
     int i;
     int s_len[2] = {0, 0};
@@ -526,10 +550,8 @@ int rna_read_set_seq(rna_read_t *rna_read, const char *bc_name,
     // allocate the sequence, even if empty
     size_t seq2_len = rna_read->seq_ranges->len;
     rna_read->seq[1] = malloc((seq2_len + 1) * sizeof(char));
-    if (rna_read->seq[1] == NULL){
-        err_msg(-1, 0, "rna_read_set_seq: %s", strerror(errno));
-        return -1;
-    }
+    if (rna_read->seq[1] == NULL)
+        return err_msg(-1, 0, "rna_read_set_seq: %s", strerror(errno));
 
     size_t n_seq = mv_size(&rna_read->seq_ranges->rv);
     for (i = 0; i <= seq2_len; ++i) rna_read->seq[1][i] = '\0';
@@ -571,7 +593,7 @@ int rna_read_seq_error(sc_sim_t *sc_sim, rna_read_t *rna_read) {
     int b, arr_len;
     int *arr = binom_ds_sample(&sc_sim->rna_err_prob, &arr_len);
     if (arr_len < 0)
-        return -1;
+        return err_msg(-1, 0, "rna_read_seq_error: failed binomial sampling");
 
     for (b = 0; b < arr_len; ++b)
         rna_read->seq[1][arr[b]] = base_rand();

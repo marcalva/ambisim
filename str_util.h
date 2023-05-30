@@ -43,6 +43,48 @@ static inline uint64_t str_int64_hash(const char *s){
 	return h;
 }
 
+/* malloc function with error printing */
+static inline
+void *pmalloc(size_t s, const char *f) {
+    if (s == 0)
+        return NULL;
+    void *r = malloc(s);
+    if (r == NULL) {
+        fprintf(stderr, "error from malloc in '%s': %s",
+                f, strerror(errno));
+        return NULL; \
+    }
+    return r;
+}
+
+/* calloc function with error printing */
+static inline
+void *pcalloc(size_t n, size_t s, const char *f) {
+    if ((n * s) == 0)
+        return NULL;
+    void *r = calloc(n, s);
+    if (r == NULL) {
+        fprintf(stderr, "error from calloc called in '%s': %s",
+                f, strerror(errno));
+        return NULL; \
+    }
+    return r;
+}
+
+/* calloc function with error printing */
+static inline
+void *prealloc(void *p, size_t s, const char *f) {
+    if (s == 0)
+        return NULL;
+    void *newp = realloc(p, s);
+    if (newp == NULL) {
+        fprintf(stderr, "error from realloc called in '%s': %s",
+                f, strerror(errno));
+        return NULL; \
+    }
+    return newp;
+}
+
 /*****************************
  * linked list of kstring 
  *****************************/

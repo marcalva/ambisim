@@ -393,6 +393,9 @@ int sc_sim_init(sc_sim_t *sc_sim) {
     sc_sim->gv = g_var_alloc();
     if (sc_sim->gv == NULL)
         return -1;
+    sc_sim->chrms = init_str_map();
+    if (sc_sim->chrms == NULL)
+        return -1;
     il_qname_init(&sc_sim->rna_names);
     il_qname_init(&sc_sim->atac_names);
 
@@ -437,6 +440,8 @@ void sc_sim_free(sc_sim_t *sc_sim){
     sc_sim->cell_types = NULL;
     g_var_dstry(sc_sim->gv);
     sc_sim->gv = NULL;
+    destroy_str_map(sc_sim->chrms);
+    sc_sim->chrms = NULL;
     il_qname_free(&sc_sim->rna_names);
     il_qname_free(&sc_sim->atac_names);
     free(sc_sim->out);
@@ -667,6 +672,52 @@ int sc_sim_check_k(sc_sim_t *sc_sim) {
     return 0;
 }
 
+int sc_sim_intrs_chrms(sc_sim_t *sc_sim) {
+    if (sc_sim == NULL)
+        return err_msg(-1, 0, "sc_sim_intrs_chrms: argument is null");
+
+    // check input
+    if (sc_sim->gex_prob == NULL ||
+        sc_sim->gex_prob->anno == NULL ||
+        sc_sim->gex_prob->anno->chrm_ix == NULL)
+        return err_msg(-1, 0, "sc_sim_intrs_chrms: genes not added");
+    if (sc_sim->atac_prob == NULL ||
+        sc_sim->atac_prob->peaks == NULL ||
+        sc_sim->atac_prob->peaks->chr_map == NULL)
+        return err_msg(-1, 0, "sc_sim_intrs_chrms: peaks not added");
+    if (sc_sim->fa == NULL ||
+        sc_sim->fa->c_names == NULL)
+        return err_msg(-1, 0, "sc_sim_intrs_chrms: fasta not added");
+    if (sc_sim->gv == NULL ||
+        sc_sim->gv->chrm_ix == NULL)
+        return err_msg(-1, 0, "sc_sim_intrs_chrms: variants not added");
+
+    destroy_str_map(sc_sim->chrms);
+    sc_sim->chrms = init_str_map();
+    if (sc_sim->chrms == NULL)
+        return -1;
+
+    str_map *gex_chrms = sc_sim->gex_prob->anno->chrm_ix;
+    str_map *atac_chrms = sc_sim->atac_prob->peaks->chr_map;
+    str_map *fa_chrms = sc_sim->fa->c_names;
+    str_map *var_chrms = sc_sim->gv->chrm_ix;
+    int found = 0;
+    int i;
+    for (i = 0; i < gex_chrms->n; ++i) {
+        char *chrm = str_map_str(gex_chrms, i);
+        if (str_map_ix(atac_chrms, chrm) < 0)
+            continue;
+        if (str_map_ix(fa_chrms, chrm) < 0)
+            continue;
+        if (str_map_ix(var_chrms, chrm) < 0)
+            continue;
+        if (add2str_map(sc_sim->chrms, chrm, &found) < 0)
+            return -1;
+    }
+
+    return 0;
+}
+
 int bc_sim_gen_reads(sc_sim_t *sc_sim, size_t bc_i) {
     if (sc_sim == NULL)
         return err_msg(-1, 0, "bc_sim_gen_reads: argument is null");
@@ -694,7 +745,7 @@ int bc_sim_gen_reads(sc_sim_t *sc_sim, size_t bc_i) {
     uint32_t atac_ambn_rd_peak = bc_sim->atac_npeak_ambn;
     uint32_t atac_ambn_rd_out = bc_sim->atac_nreads_ambn - atac_ambn_rd_peak;
 
-    // sanity checks
+    // input checks
     if (rna_cell_rd && bc_sim->n_cells < 1)
             return err_msg(-1, 0, "bc_sim_gen_reads: %u rna cell reads given for "
                     "an empty droplet", rna_cell_rd); 

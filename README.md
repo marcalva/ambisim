@@ -5,13 +5,20 @@ ambient molecule contamination.
 
 ## Installation
 
-To get ambisim, you can clone from github
-
+To download ambisim, you can clone from github
 ```bash
-git clone --recurse-submodules git@github.com:marcalva/ambisim.git
+git clone https://github.com/marcalva/ambisim.git
 ```
 
-Then type `make` to compile
+To build ambisim, we first build a local htslib library
+```bash
+make hts
+```
+
+Then we can build ambisim
+```bash
+make
+```
 
 ## Input files
 

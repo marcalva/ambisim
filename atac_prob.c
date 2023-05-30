@@ -157,6 +157,10 @@ int atac_prob_sample_read(sc_sim_t *sc_sim, uint16_t k, int peak, int rsam, atac
     if (sc_sim == NULL || pair == NULL)
         return err_msg(-1, 0, "atac_prob_sample_read: argument is null");
 
+    // input check
+    if (sc_sim->chrms == NULL || sc_sim->chrms->n < 1)
+        return err_msg(-1, 0, "gex_sample_read: no overlapping chromosomes.");
+
     atac_prob_t *ap = sc_sim->atac_prob;
     fa_seq_t *fa = sc_sim->fa;
     g_var_t *gv = sc_sim->gv;
@@ -171,37 +175,47 @@ int atac_prob_sample_read(sc_sim_t *sc_sim, uint16_t k, int peak, int rsam, atac
     uint32_t read_pair_len = (2 * read_len) + ins_size;
 
     // get sampling region
+    str_map *atac_chrms = sc_sim->atac_prob->peaks->chr_map;
     int n_tries = 0, max_tries = 30;
     g_region pk_reg;
+        uint32_t pk_len;
+    int n_n;
+    int chrm_invalid = 0;
     char *c_name;
     if (peak){
         // if read is in peak, sample a peak
-        uint32_t pk_len;
-        int pk_invalid = 1;
         do {
+            if (n_tries >= max_tries)
+                return err_msg(-1, 0, "atac_sample_read: could not sample read,"
+                        " too many tries");
             if (atac_prob_sample_peak(ap, k, &pk_reg) < 0)
                 return -1;
             pk_len = pk_reg.end - pk_reg.start;
-            c_name = str_map_str(ap->peaks->chr_map, pk_reg.rid);
+            c_name = str_map_str(atac_chrms, pk_reg.rid);
+            if (c_name == NULL)
+                return err_msg(-1, 0, "atac_sample_read: no chr found for index %i,"
+                        " there is a bug", pk_reg.rid);
+            chrm_invalid = str_map_ix(sc_sim->chrms, c_name) < 0;
+            n_n = fa_seq_n_n(fa, c_name, pk_reg.start, pk_reg.end);
             ++n_tries;
-            pk_invalid = (pk_len < read_pair_len) ||
-                (faidx_has_seq(fa->fai, c_name) == 0);
-        } while (pk_invalid && n_tries < max_tries);
+        } while (pk_len < read_pair_len || n_n > 0 || chrm_invalid);
     } else {
         // otherwise, sample a region from the genome. No 'N' bp allowed
-        // TODO sample peak size
-        int n_n;
-        uint32_t pk_len;
         do {
+            if (n_tries >= max_tries)
+                return err_msg(-1, 0, "atac_sample_read: could not sample read,"
+                        " too many tries");
             if (fa_seq_rand_range(fa, read_pair_len + 600, '.', &pk_reg) < 0)
                 return -1;
             pk_len = pk_reg.end - pk_reg.start;
-            assert(pk_len >= read_pair_len);
             c_name = str_map_str(fa->c_names, pk_reg.rid);
-            assert(c_name != NULL);
+            if (c_name == NULL)
+                return err_msg(-1, 0, "atac_sample_read: no chr found for index %i,"
+                        " there is a bug", pk_reg.rid);
+            chrm_invalid = str_map_ix(sc_sim->chrms, c_name) < 0;
             n_n = fa_seq_n_n(fa, c_name, pk_reg.start, pk_reg.end);
             ++n_tries;
-        } while (n_n > 0 && n_tries < max_tries);
+        } while (pk_len < read_pair_len || n_n > 0 || chrm_invalid);
     }
     if (n_tries == max_tries)
         return err_msg(-1, 0, "atac_prob_sample_read: could not sample from genome. "
@@ -209,7 +223,7 @@ int atac_prob_sample_read(sc_sim_t *sc_sim, uint16_t k, int peak, int rsam, atac
 
     // sample a read pair, each of length read_len, separated by 
     // sample the read inside the peak region
-    int pk_len = pk_reg.end - pk_reg.start;
+    pk_len = pk_reg.end - pk_reg.start;
     int qreg_len = (pk_len - (int)read_pair_len) + 1;
     if (qreg_len <= 0) {
         err_msg(-1, 0, "atac_prob_sample_read: qreg_len=%i", qreg_len);

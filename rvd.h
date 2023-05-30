@@ -25,20 +25,32 @@ KAVL_INIT2(k_av_ix, static, struct av_ix_t, head, dcmp)
 
 uint64_t get_rand(uint64_t max);
 
-static inline char base_rev_cmp(char n){
+static inline char base_rev_cmp(char n, int *err){
+    *err = 0;
     switch(n){
         case 'A':
             return 'T';
+        case 'a':
+            return 'T';
         case 'T':
+            return 'A';
+        case 't':
             return 'A';
         case 'C':
             return 'G';
+        case 'c':
+            return 'G';
         case 'G':
+            return 'C';
+        case 'g':
             return 'C';
         case 'N':
             return 'N';
+        case 'n':
+            return 'N';
         default:
-            return '\0';
+            *err = 1;
+            return n;
     }
 }
 
@@ -114,7 +126,16 @@ void il_qname_set_instr(il_qname_t *il_qname, const char *instr,
  * math
  ******************************************************************************/
 
+/* compute and return x! factorial.
+ * Only [0, 12] values are valid, otherwise the factorial will overflow.
+ */
 int factorial(int x);
+
+/* Compute the binomial choose coefficient (n, k).
+ * Negative @p or @k inputs return an error.
+ * An overflow will return an error.
+ * @return 0 on success, -1 on error.
+ */
 double binom_choose(double n, double k);
 
 /*******************************************************************************
@@ -124,24 +145,47 @@ double binom_choose(double n, double k);
 /*! typdef
  * @abstract Categorical distribution
  * Stores probs as CDF. If x1=.4 and x2=.6, then t1=.4 and t2=1.
+ * @p n might be greater than the number of items in the avl tree when some
+ * values are 0.
  */
 typedef struct {
     av_ix_t *root; // holds the parameter values
     uint64_t n;
 } cat_ds_t;
 
+/* Initialize a cat_ds_t struct */
 void cat_ds_init(cat_ds_t *d);
+
+/* Allocate and initialize a cat_ds_t struct */
 cat_ds_t *cat_ds_alloc();
 
+/* Free the memory and re-initialize fields in @p d. */
 void cat_ds_free(cat_ds_t *d);
+
+/* Free all memory in @p d. */
 void cat_ds_dstry(cat_ds_t *d);
 
+/* Set probability values in @p d.
+ * The @p p array stores the non-negative probability values. The values are
+ * normalized to sum to 1. The sum of values in @p p must be greater than 0.
+ * @p d Pointer to cat_ds_t struct.
+ * @p p Array of doubles containing the probability values of each category.
+ * @p n Number of elements in @p p.
+ */
 int cat_ds_set_p(cat_ds_t *d, double *p, uint64_t n);
 
+/* return a random index ix with probability p[ix]. Possible ix values are 
+ * 0, ..., n-1.
+ * @param d The categorical distribution.
+ * @param ret Store return value.
+ * @return Set @p ret to -1 on error, 0 on success.
+ */
 uint64_t cat_ds_rv(cat_ds_t *d, int *ret);
 
 /* Sample from categorical with uniform distribution.
- * Sample a number from [min,max) with equal probability.
+ * This returns a number from [min,max) with equal probability.
+ * The minimum value @p min must be < the maximum value @p max. Otherwise,
+ * the behaviour is undefined.
  */
 int cat_ds_uni_rand(int min, int max);
 
@@ -169,11 +213,12 @@ int binom_ds_set(binom_ds_t *x, double prob, int size);
 // returns an int from 0, 1, ... size.
 int binom_ds_rv(binom_ds_t *x);
 
-// sample elements from the vector (0, 1, ..., size - 1).
-// The number of elements is a random variable drawn from the binomial 
-// distribution in x.
+// sample elements from the vector (0, 1, ..., size - 1) without replacement.
+// The number of elements is drawn from the binomial distribution in x.
+// The size parameter is given by the 'n' field of @p x.
 // Returns the samples elements in an array of size @p len.
-// len < 0 on error
+// If x = 0 elements are sampled from the binomial, return NULL and len = 0.
+// Sets len = -1 on error.
 int *binom_ds_sample(binom_ds_t *x, int *len);
 
 /*******************************************************************************
@@ -339,6 +384,10 @@ int seq_ranges_check_len(seq_ranges_t *seq_rngs);
  * chromosome
  ******************************************************************************/
 
+/* Get the number of occurences of 'N' or 'n' in a sequence string.
+ * Return number of n occurrences, or -1 if lengths don't match. */
+int str_num_n(const char *str, size_t len);
+
 // Create different type for prob.
 // given range vector, return the sequence spliced togather.
 
@@ -352,23 +401,43 @@ typedef struct fa_seq_t {
     str_map *c_names;
 } fa_seq_t;
 
+/* Allocate memory and initialize all members to empty. */
 fa_seq_t *fa_seq_alloc();
 
+/* Destory fa_seq_t object and free all associated memory. */
 void fa_seq_dstry(fa_seq_t *cs);
 
+/* Add a fasta index from file @p fa_fn.
+ * This reads the chromosome names and calculated the percent, or probability,
+ * of each chromosome with respect to the length of the genome.
+ * @return -1 on error, 0 on success.
+ */
 int fa_seq_add_fai(fa_seq_t *cs, const char *fa_fn);
 
+/* Read fasta sequence into memory and store in @p cs.
+ * @return -1 on error, 0 on success.
+ */
 int fa_seq_load_seq(fa_seq_t *cs);
 
+/* Select a random chromosome and return the index number.
+ * Return -1 on error.
+ */
+int fa_seq_rand_chr(fa_seq_t *fa, const char **seqn, int *chrm_len);
+
+/* Get a random range of length @p len from the genome.
+ * Store the result in @p reg. Store the strand from the parameter value
+ * in @p strand.
+ * @return -1 on error, 0 on success.
+ */
 int fa_seq_rand_range(fa_seq_t *fa, int len, char strand, g_region *reg);
 
-/* return 1 if range is valid, 0 if not, -1 on error */
+/* return 1 if range is valid, 0 if invalid, -1 on error. */
 int fa_seq_range_valid(fa_seq_t *fa, const char *c_name, int beg, int end);
 
-/* get number of N bases in range */
+/* Get number of N bases in range, or return -1 on error. */
 int fa_seq_n_n(fa_seq_t *fa, const char *c_name, int beg, int end);
 
-char *fa_seq_rand_seq(fa_seq_t *cs, int len, int *chrm_ix, int *beg);
+char *fa_seq_rand_seq(fa_seq_t *fa, int len, int *chrm_ix, int *beg);
 
 /* given contig and int_range_t, return the sequence in the fasta.
  *

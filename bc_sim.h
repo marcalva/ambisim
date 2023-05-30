@@ -78,6 +78,21 @@ typedef struct {
 
 /*! typedef
  * @abstract struct to hold all data for experiment simulation
+ * @field barcodes Vector to store barcode information, including num. of reads.
+ * @field rna_nreads Total number of RNA reads.
+ * @field atac_nreads Total number of ATAC reads.
+ * @field gex_prob Store expression probs for each gene.
+ * @field atac_prob Store acccessibility probs for each peak.
+ * @field K Number of clusters, including ambient cluster (K-1 is number of cell types).
+ * @field sr Store vcf/bcf data.
+ * @field vcf_hdr Store vcf/bcf header.
+ * @field samples Sample string IDs.
+ * @field cell_types Cell type string IDs.
+ * @field gv Store variant data
+ * @field rna_names RNA read names.
+ * @field atac_names ATAC read names.
+ * @field rna_rd_len Read length fieldeter for RNA.
+ * @field atac_rd_len Read length fieldeter for ATAC.
  */
 typedef struct {
     mv_t(bc_simv) barcodes;
@@ -97,13 +112,15 @@ typedef struct {
     str_map *cell_types; // cell type IDs
     g_var_t *gv;
 
+    str_map *chrms; // overlapping chromosomes
+
     il_qname_t rna_names;
     il_qname_t atac_names;
 
     uint32_t rna_rd_len; // length of RNA read
     uint32_t rna_umi_len; // length of RNA read
     uint32_t atac_rd_len; // length of ATAC read
-    double seq_error;
+    double seq_error; // parameter for sequencing error
 
     binom_ds_t rna_err_prob;
     binom_ds_t atac_err_prob;
@@ -195,6 +212,13 @@ int sc_sim_read_file(sc_sim_t *sc_sim, const char *file);
 
 /* Check K after reading rna and atac */
 int sc_sim_check_k(sc_sim_t *sc_sim);
+
+/* Intersect chromosomes in gex, atac, fasta, and vcf.
+ * Store the results in the chrms field.
+ * All modes must be initialized with their chromosome maps set.
+ * Return -1 on error, 0 on success.
+ */
+int sc_sim_intrs_chrms(sc_sim_t *sc_sim);
 
 int sc_sim_sample_gex(sc_sim_t *sc_sim, int n_reads, int read_len);
 int sc_sim_sample_atac(sc_sim_t *sc_sim, int n_reads, int read_len);

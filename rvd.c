@@ -9,6 +9,7 @@
 #include <float.h>
 #include "kavl.h"
 #include "htslib/faidx.h"
+#include "htslib/vcf.h"
 #include "g_list.h"
 #include "region.h"
 #include "rvd.h"
@@ -23,8 +24,9 @@ uint64_t get_rand(uint64_t max){
 
 int seq_rev_cpl(char *seq){
     if (seq == NULL)
-        return err_msg(-1, 0, "seq_rev_cmp: argument is null");
+        return err_msg(-1, 0, "seq_rev_cpl: argument is null");
 
+    int rc_err = 0;
     div_t r;
     long int seq_len = (long int)strlen(seq);
     r = div(seq_len, 2);
@@ -32,20 +34,27 @@ int seq_rev_cpl(char *seq){
     for (i = 0; i < mid; ++i){
         long int j = seq_len - 1 - i;
         char tmp = seq[j];
-        seq[j] = base_rev_cmp(seq[i]);
-        seq[i] = base_rev_cmp(tmp);
+        seq[j] = base_rev_cmp(seq[i], &rc_err);
+        if (rc_err)
+            return err_msg(-1, 0, "seq_rev_cpl: base '%c' "
+                    "could not be reverse complemented", seq[j]);
+        seq[i] = base_rev_cmp(tmp, &rc_err);
+        if (rc_err)
+            return err_msg(-1, 0, "seq_rev_cpl: base '%c' "
+                    "could not be reverse complemented", seq[i]);
     }
-    if (extra) seq[i] = base_rev_cmp(seq[i]);
+    if (extra) seq[i] = base_rev_cmp(seq[i], &rc_err);
+    if (rc_err)
+        return err_msg(-1, 0, "seq_rev_cpl: base '%c' could not be "
+                "reverse complemented", seq[i]);
     return 0;
 }
 
 char *seq_rand(size_t len) {
     char bases[4] = "ATCG";
-    char *seq = calloc(len+1, sizeof(char));
-    if (seq == NULL) {
-        err_msg(-1, 0, "rna_read_set_seq1: %s", strerror(errno));
+    char *seq = pcalloc(len+1, sizeof(char), "seq_rand");
+    if (seq == NULL)
         return NULL;
-    }
     size_t i;
     for (i = 0; i < len; ++i)
         seq[i] = bases[rand() % 4];
@@ -61,7 +70,9 @@ void il_qname_set_step(il_qname_t *il_qname) {
     if (il_qname == NULL) return;
     uint64_t rds_per_tile = il_qname->n_reads / il_qname->n_tiles + 1;
     assert(il_qname->spots_per_tile >= rds_per_tile);
-    il_qname->step = (uint64_t)sqrt(il_qname->spots_per_tile / rds_per_tile);
+    float fstp = (float)il_qname->spots_per_tile;
+    float frpt = (float)rds_per_tile;
+    il_qname->step = (uint64_t)sqrt(floorf(fstp / frpt));
 }
 
 void il_qname_init(il_qname_t *il_qname) {
@@ -113,11 +124,9 @@ char *il_qname_get_name(il_qname_t *il_qname) {
         return NULL;
     }
 
-    char *base_name = malloc(1000 * sizeof(char));
-    if (base_name == NULL){
-        err_msg(-1, 0, "il_qname_get_name: %s", strerror(errno));
+    char *base_name = pmalloc(1000 * sizeof(char), "il_qname_get_name");
+    if (base_name == NULL)
         return NULL;
-    }
     int base_len = snprintf(base_name, 1000, "@%s:%i:%s:%i:%i%i%02i:%i:%i",
                 il_qname->instr, il_qname->rn, il_qname->fc,
                 il_qname->lane,
@@ -128,7 +137,9 @@ char *il_qname_get_name(il_qname_t *il_qname) {
         return NULL;
     }
     assert(base_len < 1000);
-    base_name = realloc(base_name, (base_len + 1) * sizeof(char));
+    base_name = prealloc(base_name, (base_len + 1) * sizeof(char), "il_qname_get_name");
+    if (base_name == NULL)
+        return NULL;
 
     // increment counter
     il_qname->y += il_qname->step;
@@ -156,7 +167,9 @@ char *il_qname_get_name(il_qname_t *il_qname) {
         err_msg(-1, 0, "il_qname_get_name: overrran lanes, likely a bug");
         return NULL;
     }
-    base_name = realloc(base_name, (base_len + 1) * sizeof(char));
+    base_name = prealloc(base_name, (base_len + 1) * sizeof(char), "il_qname_get_name");
+    if (base_name == NULL)
+        return NULL;
 
     return base_name;
 }
@@ -177,9 +190,9 @@ void il_qname_set_instr(il_qname_t *il_qname, const char *instr,
 
 int factorial(int x) {
     if (x < 0)
-        return err_msg(-1, 0, "factorial: x=%i < 0");
+        return err_msg(-1, 0, "factorial: x=%i < 0", x);
     if (x > 12)
-        return err_msg(-1, 0, "factorial: x=%i too large (overflow)");
+        return err_msg(-1, 0, "factorial: x=%i too large (overflow)", x);
     int y = 1;
     for (; x > 0; --x) y *= x;
     return y;
@@ -216,11 +229,9 @@ void cat_ds_init(cat_ds_t *d) {
 }
 
 cat_ds_t *cat_ds_alloc(){
-    cat_ds_t *d = malloc(sizeof(cat_ds_t));
-    if (d == NULL){
-        fprintf(stderr, "cat_ds_alloc: %s", strerror(errno));
+    cat_ds_t *d = pmalloc(sizeof(cat_ds_t), "cat_ds_alloc");
+    if (d == NULL)
         return NULL;
-    }
     cat_ds_init(d);
     return(d);
 }
@@ -251,29 +262,43 @@ int cat_ds_set_p(cat_ds_t *d, double *p, uint64_t n){
         return -1;
     }
 
+    if (n == 0)
+        return 0;
+
     double p_total = 0.0;
     uint64_t i;
-    for (i = 0; i < n; ++i)
+    for (i = 0; i < n; ++i) {
+        if (p[i] < 0)
+            return err_msg(-1, 0, "cat_ds_set_p: p[%i]=%f must be non-negative",
+                    i, p[i]);
         p_total += p[i];
-    assert(p_total > 0);
+    }
+    if (p_total <= 0.0)
+        return err_msg(-1, 0, "cat_ds_set_p: all values in p are 0");
 
     // add to avl tree
     double p_this = 0.0;
     for (i = 0; i < n; ++i){
-        av_ix_t *s, *t = malloc(sizeof(av_ix_t));
-        if (t == NULL){
-            fprintf(stderr, "cat_ds_set_p: %s", strerror(errno));
-            return -1;
-        }
+        // 0 probability values are skipped
         double prob = p[i] / p_total;
+        if (prob <= DBL_EPSILON)
+            continue;
+        av_ix_t *s, *t = pmalloc(sizeof(av_ix_t), "cat_ds_set_p");
+        if (t == NULL)
+            return -1;
         p_this += prob;
         t->ix = i;
         t->val = p_this;
         t->prob = prob;
+        // return t if not present, otherwise return duplicate node
         s = kavl_insert(k_av_ix, &d->root, t, NULL);
-        // if t already found, the prob. is 0 so we don't add and skip
-        if (t != s){
+        // sanity check
+        // if already present
+        if (t != s) {
             free(t);
+            fprintf(stderr, "prob=%f\n", prob);
+            fprintf(stderr, "t->val = %f\ns->val = %f\n", t->val, s->val);
+            return err_msg(-1, 0, "cat_ds_set_p: trying to set same prob value twice");
         }
     }
 
@@ -286,26 +311,45 @@ uint64_t cat_ds_rv(cat_ds_t *d, int *ret){
     *ret = 0;
     if (d == NULL) {
         *ret = 1;
+        return err_msg(0, 0, "cat_ds_rv: argument is null");
         return 0;
+    }
+
+    if (d->n == 0 || d->root == NULL) {
+        *ret = -1;
+        return err_msg(0, 0, "cat_ds_rv: no elements in distribution");
+    }
+    if (kavl_size(head, d->root) == 0) {
+        *ret = -1;
+        return err_msg(0, 0, "cat_ds_rv: no elements in distribution");
     }
 
     int rmax = RAND_MAX;
     uint64_t r = get_rand(rmax);
     double rd = (double)r / (double)rmax;
-    assert(rd <= 1.0);
 
     kavl_itr_t(k_av_ix) itr;
     av_ix_t pf;
     pf.val = rd;
+    // place itr so it is greater than or equal to value of pf
+    uint64_t ix;
     kavl_itr_find(k_av_ix, d->root, &pf, &itr);
     const av_ix_t *qf = kavl_at(&itr);
-    // NULL if val larger than any object.
-    if (qf == NULL) return(d->n - 1);
-    return qf->ix;
+    // return last index if nothing greater. Shouldn't happen, maybe in edge 
+    // case with rounding error
+    if (qf == NULL) {
+        kavl_itr_first(k_av_ix, d->root, &itr);
+        do {
+            const av_ix_t *qtmp = kavl_at(&itr);
+            ix = qtmp->ix;
+        } while (kavl_itr_next(k_av_ix, &itr));
+    } else {
+        ix = qf->ix;
+    }
+    return ix;
 }
 
 int cat_ds_uni_rand(int min, int max){
-    assert(min < max);
     int len = max - min;
     int r = rand() % len;
     r += min;
@@ -324,7 +368,7 @@ void binom_ds_init(binom_ds_t *x) {
 }
 
 binom_ds_t *binom_ds_alloc() {
-    binom_ds_t *x = malloc(sizeof(binom_ds_t));
+    binom_ds_t *x = pmalloc(sizeof(binom_ds_t), "binom_ds_alloc");
     binom_ds_init(x);
     return x;
 }
@@ -356,9 +400,9 @@ int binom_ds_set(binom_ds_t *x, double prob, int size) {
     x->size = size;
 
     int k = 0;
-    double *t = malloc(size * sizeof(double));
+    double *t = pmalloc(size * sizeof(double), "binom_ds_set");
     if (t == NULL)
-        return err_msg(-1, 0, "binom_ds_set: %s", strerror(errno));
+        return -1;
     for (k = 0; k < size; ++k) {
         t[k] = binom_choose(size, k) * pow(prob, k) * pow(1 - prob, size - k);
         if (t[k] < 0)
@@ -366,7 +410,7 @@ int binom_ds_set(binom_ds_t *x, double prob, int size) {
     }
 
     if (cat_ds_set_p(&x->catd, t, size) < 0)
-        return -1;
+        return err_msg(-1, 0, "binom_ds_set: failed to set parameters");
 
     free(t);
 
@@ -383,7 +427,7 @@ int binom_ds_rv(binom_ds_t *x) {
     int ret;
     int r = cat_ds_rv(&x->catd, &ret);
     if (ret < 0)
-        return -1;
+        return err_msg(-1, 0, "failed to sample random variable");
 
     return r;
 }
@@ -405,9 +449,12 @@ int *binom_ds_sample(binom_ds_t *x, int *len) {
     bflg_init(&flgs, x->size);
 
     int i, rv = binom_ds_rv(x);
-    int *p = malloc(rv * sizeof(int));
+    *len = rv;
+    if (rv == 0)
+        return NULL;
+    int *p = pmalloc(rv * sizeof(int), "binom_ds_sample");
     if (p == NULL) {
-        err_msg(-1, 0, "binom_ds_sample:  %s", strerror(errno));
+        err_msg(-1, 0, "binom_ds_sample: failed to allocate memory");
         return NULL;
     }
 
@@ -507,9 +554,9 @@ int seq_range_subset(seq_range_t *seq_rng, seq_range_t *out,
     r_out.beg = seq_rng->range.beg + q_beg;
     r_out.end = r_out.beg + q_len;
 
-    char *seq = calloc(q_len + 1, sizeof(char));
+    char *seq = pcalloc(q_len + 1, sizeof(char), "seq_range_subset");
     if (seq == NULL)
-        return err_msg(-1, 0, "seq_range_subset: %s", strerror(errno));
+        return -1;
 
     memcpy(seq, seq_rng->seq + q_beg, q_len * sizeof(char));
     seq[q_len] = '\0';
@@ -941,18 +988,38 @@ int seq_ranges_check_len(seq_ranges_t *seq_rngs) {
  * chromosome
  ******************************************************************************/
 
-fa_seq_t *fa_seq_alloc(){
-    fa_seq_t *cs = malloc(sizeof(fa_seq_t));
-    if (cs == NULL){
-        fprintf(stderr, "fa_seq_alloc: %s", strerror(errno));
-        return NULL;
+int str_num_n(const char *str, size_t len) {
+    int num_n = 0;
+
+    size_t ix;
+    for (ix = 0; ix < len && *str; ++ix, ++str) {
+        if (*str == 'N' || *str == 'n')
+            ++num_n;
     }
+    if (ix != len)
+        return err_msg(-1, 0, "str_num_n: str '%s' has length %zu "
+                "but param len=%zu", ix, len);
+
+    return num_n;
+}
+
+fa_seq_t *fa_seq_alloc(){
+    fa_seq_t *cs = pmalloc(sizeof(fa_seq_t), "fa_seq_alloc");
+    if (cs == NULL)
+        return NULL;
     cs->fai = NULL;
     cs->chrm_prob = cat_ds_alloc();
+    if (cs->chrm_prob == NULL) {
+        free(cs);
+        return NULL;
+    }
     mv_init(&cs->seqs);
     cs->c_names = init_str_map();
-    if (cs->c_names == NULL)
+    if (cs->c_names == NULL) {
+        cat_ds_dstry(cs->chrm_prob);
+        free(cs);
         return NULL;
+    }
     return cs;
 }
 
@@ -971,33 +1038,46 @@ void fa_seq_dstry(fa_seq_t *cs){
 int fa_seq_add_fai(fa_seq_t *cs, const char *fa_fn){
     if (cs == NULL) return(-1);
 
+    // load sequence
     cs->fai = fai_load(fa_fn);
+    if (cs->fai == NULL)
+        return err_msg(-1, 0, "fa_seq_add_fai: failed to load index "
+                "from '%s'", fa_fn);
     int n_seq = faidx_nseq(cs->fai);
-    double *probs = malloc(n_seq * sizeof(double));
-    if (probs == NULL){
-        fprintf(stderr, "fa_seq_add_fai: %s", strerror(errno));
+    if (n_seq == 0)
+        return err_msg(-1, 0, "fa_seq_add_fai: no chromosomes "
+                "found in '%s'", fa_fn);
+
+    double *probs = pmalloc(n_seq * sizeof(double), "fa_seq_add_fai");
+    if (probs == NULL)
         return -1;
-    }
     int i;
     for (i = 0; i < n_seq; ++i){
         const char *seqn = faidx_iseq(cs->fai, i);
         probs[i] = (double)faidx_seq_len(cs->fai, seqn);
+        if (probs[i] < 0)
+            return err_msg(-1, 0, "fa_seq_add_fai: seq len return "
+                    "negative length for contig %i", i);
         int found = 0;
+        // add chromosome name
         if (add2str_map(cs->c_names, seqn, &found) < 0)
             return -1;
         if (found)
-            return err_msg(-1, 0, "fa_seq_add_fai: %s found twice", 
+            return err_msg(-1, 0, "fa_seq_add_fai: contig '%s' found twice", 
                     seqn);
     }
+    // set probabilities by length
     int cret = cat_ds_set_p(cs->chrm_prob, probs, (uint64_t)n_seq);
-    if (cret < 0) return -1;
+    if (cret < 0)
+        return -1;
     free(probs);
 
     return 0;
 }
 
 int fa_seq_load_seq(fa_seq_t *cs){
-    if (cs == NULL) return -1;
+    if (cs == NULL)
+        return err_msg(-1, 0, "fa_seq_load_seq: argument is null");
 
     int i, n_seq = faidx_nseq(cs->fai);
     for (i = 0; i < n_seq; ++i){
@@ -1005,41 +1085,73 @@ int fa_seq_load_seq(fa_seq_t *cs){
         int chrm_len = faidx_seq_len(cs->fai, seqn);
         int end = chrm_len - 1, qlen = 0;
         char *seq = faidx_fetch_seq(cs->fai, seqn, 0, end, &qlen);
-        if (seq == NULL){
-            fprintf(stderr, "fa_seq_load_seq: %s", strerror(errno));
-            return -1;
-        }
-        if (mv_push(seq_v, &cs->seqs, seq) < 0){
-            fprintf(stderr, "fa_seq_load_seq: failed to add sequence to vec");
-            return -1;
-        }
+        if (qlen == -2)
+            return err_msg(-1, 0, "fa_seq_load_seq: contig '%s' not found",
+                   seqn);
+        if (qlen == -1)
+            return err_msg(-1, 0, "fa_seq_load_seq: could not fetch sequence "
+                    "for contig '%s'", seqn);
+        if (seq == NULL)
+            return err_msg(-1, 0, "fa_seq_load_seq: %s", strerror(errno));
+        if (mv_push(seq_v, &cs->seqs, seq) < 0)
+            return err_msg(-1, 0, "fa_seq_load_seq: failed to add sequence to vec");
     }
 
     return 0;
+}
+
+int fa_seq_rand_chr(fa_seq_t *fa, const char **seqn, int *chrm_len) {
+    if (fa == NULL || seqn == NULL || chrm_len == NULL)
+        return err_msg(-1, 0, "fa_seq_rand_chr: argument is null");
+
+    if (fa->chrm_prob == NULL || fa->chrm_prob->n == 0)
+        return err_msg(-1, 0, "fa_seq_rand_chr: no chromosomes added");
+
+    // pick a random chromosome
+    int dret = 0;
+    int c_ix = cat_ds_rv(fa->chrm_prob, &dret);
+    if (dret < 0)
+        return -1;
+
+    // get chromosome name
+    *seqn = faidx_iseq(fa->fai, c_ix);
+    if (*seqn == NULL)
+        return err_msg(-1, 0, "fa_seq_rand_range: chromosome for "
+                              "index %i not found", c_ix);
+
+    // get chromosome length
+    *chrm_len = faidx_seq_len(fa->fai, *seqn);
+    if (*chrm_len < 0)
+        return err_msg(-1, 0, "fa_seq_rand_range: seq len for contig "
+                              "%s not found", *seqn);
+
+    return c_ix;
 }
 
 int fa_seq_rand_range(fa_seq_t *fa, int len, char strand, g_region *reg){
     if (fa == NULL || reg == NULL)
         return err_msg(-1, 0, "fa_seq_rand_range: argument is null");
 
+    if (fa->chrm_prob == NULL || fa->chrm_prob->n == 0)
+        return err_msg(-1, 0, "fa_seq_rand_range: no chromosomes added");
+
     // pick a random chromosome
-    int dret = 0;
-    int c_ix = cat_ds_rv(fa->chrm_prob, &dret);
-    
-    const char *seqn = faidx_iseq(fa->fai, c_ix);
-    if (seqn == NULL)
-        return err_msg(-1, 0, "fa_seq_rand_range: chromosome for "
-                "index %i not found", c_ix);
-    int chrm_len = faidx_seq_len(fa->fai, seqn);
-    if (chrm_len < 0)
-        return err_msg(-1, 0, "fa_seq_rand_range: chromosome for index "
-                "%i not found", c_ix);
+    int n_tries = 0, max_tries = 30;
+    int c_ix;
+    int chrm_len = 0;
+    const char *seqn;
+    while (chrm_len <= 0 && n_tries < max_tries) {
+        c_ix = fa_seq_rand_chr(fa, &seqn, &chrm_len);
+        if (c_ix < 0)
+            return -1;
+        chrm_len -= len;
+        ++n_tries;
+    }
+    if (n_tries == max_tries)
+        return err_msg(-1, 0, "fa_seq_rand_range: could not get a chromosome "
+                "long enough to fit range of length %i", len);
 
-    chrm_len -= len;
-    if (chrm_len <= 0)
-        return err_msg(-1, 0, "fa_seq_rand_range: chromosome length %i "
-                "too small for requested length %i", chrm_len, len);
-
+    // get a random range in the chromosomoe
     int pos = rand() % chrm_len;
     reg->strand = strand;
     reg->rid = c_ix;
@@ -1073,8 +1185,10 @@ int fa_seq_n_n(fa_seq_t *fa, const char *c_name, int beg, int end){
     if (fa == NULL || c_name == NULL)
         return err_msg(-1, 0, "fa_seq_n_n: argument is null");
 
+    // make sure range is valid
     int rval;
-    if ((rval = fa_seq_range_valid(fa, c_name, beg, end)) < 0)
+    rval = fa_seq_range_valid(fa, c_name, beg, end);
+    if (rval < 0)
         return -1;
 
     if (rval == 0)
@@ -1083,65 +1197,46 @@ int fa_seq_n_n(fa_seq_t *fa, const char *c_name, int beg, int end){
 
     int c_ix = str_map_ix(fa->c_names, (char *)c_name);
 
-    int pos, n_n = 0;
-    for (pos = beg; pos < end; ++pos)
-        n_n += mv_i(&fa->seqs, c_ix)[pos] == 'N' ? 1 : 0;
+    size_t len = end - beg;
+    int n_n = str_num_n(&mv_i(&fa->seqs, c_ix)[beg], len);
+    if (n_n < 0)
+        return -1;
 
     return n_n;
 }
 
-char *fa_seq_rand_seq(fa_seq_t *cs, int len, int *chrm_ix, int *beg){
-    if (cs == NULL) return(NULL);
+char *fa_seq_rand_seq(fa_seq_t *fa, int len, int *chrm_ix, int *beg){
+    if (fa == NULL)
+        return(NULL);
 
-    int dret = 0;
-    int c_ix = cat_ds_rv(cs->chrm_prob, &dret);
-    if (dret < 0) return NULL;
-    const char *seqn = faidx_iseq(cs->fai, c_ix);
-    if (seqn == NULL){
-        fprintf(stderr, "fa_seq_rand_seq: chromosome for index %i not found\n", c_ix);
-        return NULL;
-    }
-    int chrm_len = faidx_seq_len(cs->fai, seqn);
-    if (chrm_len < 0){
-        fprintf(stderr, "fa_seq_rand_seq: chromosome for index %i not found\n", c_ix);
-        return NULL;
-    }
-    chrm_len -= len;
-    // TODO: deal with len too long
-    if (chrm_len <= 0) return NULL;
-    int pos;
+    // pick a random chromosome
+    int n_tries = 0, max_tries = 30;
+    int chrm_len = 0;
+    const char *seqn;
+    g_region reg;
+    init_g_region(&reg);
     char *seq = NULL;
-    uint32_t n_N = 1;
+    int n_N = 1;
     do {
-        pos = rand() % chrm_len;
+        int ret = fa_seq_rand_range(fa, len, '+', &reg);
+        if (ret < 0)
+            return NULL;
         int qlen = 0;
-        // int len1 = len - 1; // fetch_seq is inclusive
-        // seq = faidx_fetch_seq(cs->fai, seqn, pos, pos + len1, &qlen);
         free(seq);
-        seq = strndup(mv_i(&cs->seqs, c_ix) + pos, len);
-        qlen = len;
-        if (qlen == -2){
-            fprintf(stderr, "fa_seq_rand_seq: chromosome %s not found", seq);
+        seq = strndup(mv_i(&fa->seqs, reg.rid) + reg.start, len);
+
+        n_N = str_num_n(seq, len);
+        if (n_N < 0) {
+            free(seq);
             return NULL;
         }
-        if (qlen == -1){
-            fprintf(stderr, "fa_seq_rand_seq: error getting sequence for %s:%i-%i\n", 
-                    seq, pos, pos + len);
-            return NULL;
-        }
-        if (qlen < len) continue; // ensure length is less than desired
-        n_N = 0;
-        int bi = 0;
-        for (bi = 0; bi < qlen; ++bi){
-            if (seq[bi] == 'N') ++n_N;
-        }
+
     } while (n_N > 0);
-    *chrm_ix = c_ix;
-    *beg = pos;
+    *chrm_ix = reg.rid;
+    *beg = reg.start;
     return seq;
 }
 
-// TODO: expand to accomodate index load instead of from in-memory seqs
 int fa_seq_seq_range(fa_seq_t *fa, const char *c_name, int_range_t range, 
         seq_range_t **seq_rng){
     if (fa == NULL || c_name == NULL || seq_rng == NULL)
@@ -1200,14 +1295,14 @@ int fa_seq_seq_ranges(fa_seq_t *fa, const char *c_name, int_ranges_t ranges,
     if (fa == NULL || seq_rngs == NULL)
         return err_msg(-1, 0, "fa_seq_seq_ranges: argument is null");
 
-    // create output
-    seq_ranges_t *l = malloc(sizeof(seq_ranges_t));
+    // allocate output
+    seq_ranges_t *l = pmalloc(sizeof(seq_ranges_t), "fa_seq_seq_ranges");
     if (l == NULL)
-        return err_msg(-1, 0, "fa_seq_seq_ranges: %s", strerror(errno));
+        return -1;
     seq_ranges_init(l);
 
-    int n_ranges = (int)(mv_size(&ranges.rv));
-
+    // loop over each range and add to seq_rngs
+    int n_ranges = (int)mv_size(&ranges.rv);
     int i;
     for (i = 0; i < n_ranges; ++i){
         int_range_t range = mv_i(&ranges.rv, i);
