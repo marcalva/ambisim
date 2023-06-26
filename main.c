@@ -46,6 +46,9 @@ static void usage(FILE *fp, int exit_status){
             "  -r, --peak-prob          Path to file with numeric matrix giving open chromatin peak accessibility probabilities.\n"
             "                           Rows represent peaks and columns represent cell types. Last column is ambient.\n"
             "                           No row names or header.\n"
+            "  -b, --bg-prob-sam        Optional file containing the sample probabilities of the background. By default,\n"
+            "                           the sample for each molecule is taken uniformly. First column contains the sample ID,\n"
+            "                           second contains the probabilities. No header.\n"
             "  -o, --peaks              Path to BED file containing peaks. Number of peaks must match number of rows\n"
             "                           in peak probabilities file.\n"
             "  -O, --out                File path to output folder [sim].\n"
@@ -89,6 +92,7 @@ int main(int argc, char *argv[]){
         {"gene-ids", required_argument, NULL, 'G'},
         {"mmrna-prob", required_argument, NULL, 'm'},
         {"peak-prob", required_argument, NULL, 'r'},
+        {"bg-prob-sam", required_argument, NULL, 'b'},
         {"peaks", required_argument, NULL, 'o'},
         {"out", required_argument, NULL, 'O'},
         {"seq-error", required_argument, NULL, 'e'},
@@ -112,6 +116,7 @@ int main(int argc, char *argv[]){
     char *rho_fn = NULL;
     char *gene_ids_fn = NULL;
     char *mmrna_fn = NULL;
+    char *bg_prob_sam_fn = NULL;
     char *peak_prob_fn = NULL;
     char *peaks_fn = NULL;
     char *out_fn = strdup("sim/");
@@ -138,7 +143,7 @@ int main(int argc, char *argv[]){
     char *endptr;
     int option_index = 0;
     int cm, cret = 0;
-    while ((cm = getopt_long_only(argc, argv, "v:s:c:g:f:d:p:G:m:r:o:O:e:l:U:L:S:tV0", 
+    while ((cm = getopt_long_only(argc, argv, "v:s:c:g:f:d:p:G:m:r:b:o:O:e:l:U:L:S:tV0", 
                     loptions, &option_index)) != -1){
         switch(cm){
             case 'v': vcf_fn = strdup(optarg); 
@@ -199,6 +204,13 @@ int main(int argc, char *argv[]){
             case 'r':
                       peak_prob_fn = strdup(optarg);
                       if (peak_prob_fn == NULL){
+                          ret = err_msg(EXIT_FAILURE, 0, "%s", strerror(errno));
+                          goto cleanup;
+                      }
+                      break;
+            case 'b':
+                      bg_prob_sam_fn = strdup(optarg);
+                      if (bg_prob_sam_fn == NULL){
                           ret = err_msg(EXIT_FAILURE, 0, "%s", strerror(errno));
                           goto cleanup;
                       }
@@ -408,6 +420,14 @@ int main(int argc, char *argv[]){
     if (sc_sim_load_atac(sc_sim, peak_prob_fn, peaks_fn) < 0) {
         ret = EXIT_FAILURE;
         goto cleanup;
+    }
+
+    if (bg_prob_sam_fn != NULL) {
+        if (verbose) log_msg("loading background sample probabilities");
+        if (sc_sim_load_bg_sam_prob(sc_sim, bg_prob_sam_fn) < 0) {
+            ret = EXIT_FAILURE;
+            goto cleanup;
+        }
     }
 
     if (sc_sim_check_k(sc_sim) < 0) {

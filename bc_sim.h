@@ -56,6 +56,11 @@ typedef struct {
 } atac_pair_t;
 
 typedef struct {
+    str_map *samples; // sample indexes
+    cat_ds_t *sam_probs;
+} sam_prob_t;
+
+typedef struct {
     char *rna_barcode;
     char *atac_barcode;
     uint8_t n_cells; // num of cells in droplet, 0, 1, 2, ...
@@ -101,6 +106,8 @@ typedef struct {
     
     gex_prob_t *gex_prob;
     atac_prob_t *atac_prob;
+    sam_prob_t *bg_sam_prob; // background sample probs
+    uint8_t has_bg_sam;
 
     uint16_t K; // number of cell types + ambient (K-1 is num of cell types)
 
@@ -199,6 +206,11 @@ int sc_sim_load_fa(sc_sim_t *sc_sim, const char *file);
  */
 int sc_sim_load_gex(sc_sim_t *sc_sim, const char *rho_file, 
         const char *mmrna_file, const char *gene_ids_file);
+
+/* Load background sample probs from file.
+ * Returns 0 on success, -1 on error.
+ */
+int sc_sim_load_bg_sam_prob(sc_sim_t *sc_sim, const char *prob_file);
 
 /* Load atac probs
  * prob_file has the peak probabilities per cell type.

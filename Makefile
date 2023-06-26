@@ -1,15 +1,14 @@
 
 CC = $(shell which gcc)
-# CFLAGS = -g -O1 -Wall -Wextra -Wfloat-equal -Wno-unused-function -fsanitize=address -fno-omit-frame-pointer
-CFLAGS += -g -O2 -Wall -Wextra -Wfloat-equal -Wno-unused-function -Wpointer-arith -Wshadow
+CFLAGS = -g -O1 -Wall -Wextra -Wfloat-equal -Wno-unused-function -fsanitize=address -fno-omit-frame-pointer
+# CFLAGS += -g -O2 -Wall -Wextra -Wfloat-equal -Wno-unused-function -Wpointer-arith -Wshadow
 
 HTSDIR = htslib
-HTSLIB = $(HTSDIR)/libhts.a
 
 CPPFLAGS += -I. -I$(HTSDIR)
 
 OBJS = main.o rvd.o array_util.o bins.o gtf_anno.o str_util.o overlap.o \
-	   variants.o counts.o region.o sam_read.o gex_prob.o atac_prob.o bc_sim.o
+	   variants.o counts.o region.o sam_read.o gex_prob.o atac_prob.o sam_prob.o bc_sim.o
 
 ambsim_make : ambisim
 

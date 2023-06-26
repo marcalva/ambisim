@@ -4,6 +4,7 @@
 #include "g_list.h"
 #include "gex_prob.h"
 #include "atac_prob.h"
+#include "sam_prob.h"
 
 #define ROUND_2_INT(f) ((int)(f >= 0.0 ? (f + 0.5) : (f - 0.5)))
 
@@ -377,6 +378,10 @@ int sc_sim_init(sc_sim_t *sc_sim) {
     sc_sim->atac_prob = atac_prob_alloc();
     if (sc_sim->atac_prob == NULL)
         return -1;
+    sc_sim->bg_sam_prob = sam_prob_alloc();
+    if (sc_sim->bg_sam_prob == NULL)
+        return -1;
+    sc_sim->has_bg_sam = 0;
 
     sc_sim->fa = fa_seq_alloc();
     if (sc_sim->fa == NULL)
@@ -426,6 +431,9 @@ void sc_sim_free(sc_sim_t *sc_sim){
     sc_sim->gex_prob = NULL;
     atac_prob_dstry(sc_sim->atac_prob);
     sc_sim->atac_prob = NULL;
+    sam_prob_dstry(sc_sim->bg_sam_prob);
+    sc_sim->bg_sam_prob = NULL;
+    sc_sim->has_bg_sam = 0;
 
     fa_seq_dstry(sc_sim->fa);
     sc_sim->fa = NULL;
@@ -601,6 +609,19 @@ int sc_sim_load_gex(sc_sim_t *sc_sim, const char *rho_file,
         return -1;
 
     return cell_k;
+}
+
+int sc_sim_load_bg_sam_prob(sc_sim_t *sc_sim, const char *prob_file) {
+    if (sc_sim == NULL || prob_file == NULL)
+        return err_msg(-1, 0, "sc_sim_load_bg_sam_prob: argument is null");
+
+
+    if (sam_prob_load_probs(sc_sim->bg_sam_prob, prob_file) < 0)
+        return -1;
+    
+    sc_sim->has_bg_sam = 1;
+
+    return 0;
 }
 
 int sc_sim_load_atac(sc_sim_t *sc_sim, const char *prob_file, 
@@ -788,7 +809,11 @@ int bc_sim_gen_reads(sc_sim_t *sc_sim, size_t bc_i) {
 
     // for RNA ambient reads
     for (r_i = 0; r_i < rna_ambn_rd; ++r_i) {
-        uint8_t s_ix = n_sam;
+        int s_ix = n_sam;
+        if (sc_sim->has_bg_sam) {
+            if ((s_ix = sam_prob_sample_sam(sc_sim->bg_sam_prob)) < 0)
+                return -1;
+        }
         uint8_t ct_ix = n_ct;
 
         rna_read_t rna_read;
@@ -856,7 +881,11 @@ int bc_sim_gen_reads(sc_sim_t *sc_sim, size_t bc_i) {
     // for ATAC ambient peak reads
     for (r_i = 0; r_i < atac_ambn_rd_peak; ++r_i) {
         // ambient sample, cell type
-        uint8_t s_ix = n_sam;
+        int s_ix = n_sam;
+        if (sc_sim->has_bg_sam) {
+            if ((s_ix = sam_prob_sample_sam(sc_sim->bg_sam_prob)) < 0)
+                return -1;
+        }
         uint8_t ct_ix = n_ct;
 
         atac_pair_t atac_pair;
@@ -878,7 +907,11 @@ int bc_sim_gen_reads(sc_sim_t *sc_sim, size_t bc_i) {
     // for ATAC ambient out reads
     for (r_i = 0; r_i < atac_ambn_rd_out; ++r_i) {
         // ambient sample, cell type
-        uint8_t s_ix = n_sam;
+        int s_ix = n_sam;
+        if (sc_sim->has_bg_sam) {
+            if ((s_ix = sam_prob_sample_sam(sc_sim->bg_sam_prob)) < 0)
+                return -1;
+        }
         uint8_t ct_ix = n_ct;
 
         atac_pair_t atac_pair;
