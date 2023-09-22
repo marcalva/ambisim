@@ -41,7 +41,7 @@ IDs.
 
 ### Droplet data file
 
-The droplet file contains the following columns
+The droplet data file should contain the following columns in this exact order:
 
 - **RNA_BC** The RNA barcode sequence identifier (take from 10X whitelist if
   mapping with CellRanger). Any trailing characters such as '-1' should be
@@ -49,22 +49,23 @@ The droplet file contains the following columns
 - **ATAC_BC** The corresponding ATAC barcode sequence identifier 
   (take from 10X whitelist if mapping with CellRanger). Any trailing
   characters such as '-1' should be removed.
-- **Type** The droplet type, one of empty, singlet, or doublet.
 - **n** Number of nuclei in droplet, one of 0, 1, or 2.
-- **sam** The sample ID(s) corresponding the one of the VCF sample IDs.
-  This value is ignored if n=0. If the droplet is a doublet (n=2), set the 
-  join two sample IDS with a comma delimiter, e.g. 'S1, S2'.
+- **sam** The sample ID(s) corresponding to one of the VCF sample IDs.
+  This value is ignored if n=0. If the droplet is a doublet (n=2),
+  join the two sample IDS with a comma delimiter, e.g. 'S1, S2'.
 - **ct** The numeric index of the cell type of the droplet (0, 1, ... K-1).
   If empty (n=0), this value is ignored. If doublet, join the cell type IDs
   with a comma, e.g. '0,3'.
-- **rna_nr_c** The number of gene expression UMIs from the nucleus.
+- **rna_nr_c** The number of gene expression UMIs from the nucleus/cell.
 - **rna_nr_a** The number of gene expression UMIs from the ambient pool.
-- **atac_nr_c** The number of ATAC DNA reads from the nucleus.
-- **atac_nr_a** The number of ATAC DNA reads from the ambient pool
-- **atac_nr_cp** The number of ATAC DNA reads from the nucleus/cell inside
-  a peak.
-- **atac_nr_ap** The number of ATAC DNA reads from the ambient pool inside
-  a peak.
+- **atac_nr_c_ip** The number of ATAC DNA reads from the nucleus/cell that
+  are inside peaks.
+- **atac_nr_a_ip** The number of ATAC DNA reads from the ambient pool that
+  are inside peaks.
+- **atac_nr_c_op** The number of ATAC DNA reads from the nucleus/cell that
+  are outside peaks.
+- **atac_nr_a_op** The number of ATAC DNA reads from the ambient pool that
+  are outside peaks.
 
 ## Utility scripts
 

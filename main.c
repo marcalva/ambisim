@@ -304,31 +304,6 @@ int main(int argc, char *argv[]){
     if (seed >= 0) srand(seed);
     else srand(time(NULL));
 
-    /*
-    // test binom
-    binom_ds_t *bd = binom_ds_alloc();
-    if (binom_ds_set(bd, .7, 10) < 0)
-        goto cleanup;
-    int rix;
-    fprintf(stdout, "binomial rand=\n");
-    for (rix = 0; rix < 20; ++rix) {
-        int len;
-        int *p = binom_ds_sample(bd, &len);
-        if (len < 0)
-            goto cleanup;
-        int j;
-        fprintf(stdout, "n=%i: ", len);
-        for (j = 0; j < len; ++j) {
-            if (j) fprintf(stdout, ", ");
-            fprintf(stdout, "%i", p[j]);
-        }
-        free(p);
-        fprintf(stdout, "\n");
-    }
-    binom_ds_dstry(bd);
-    goto cleanup;
-    */
-
     // check required arguments
     if (vcf_fn == NULL) {
         ret = err_msg(EXIT_FAILURE, 0, "vcf file must be provided with --vcf");
@@ -485,6 +460,7 @@ cleanup:
     free(rho_fn);
     free(gene_ids_fn);
     free(peak_prob_fn);
+    free(bg_prob_sam_fn);
     free(peaks_fn);
     free(mmrna_fn);
     free(out_fn);

@@ -68,10 +68,10 @@ typedef struct {
     mv_t(ui8v) cell_types; // index of cell type corresponding to cell_types
     uint32_t rna_nreads_cell; // number of reads from cell/nucleus.
     uint32_t rna_nreads_ambn;
-    uint32_t atac_nreads_cell;
-    uint32_t atac_nreads_ambn;
-    uint32_t atac_npeak_cell;
-    uint32_t atac_npeak_ambn;
+    uint32_t atac_nreads_cell_ip; // cell inside peaks
+    uint32_t atac_nreads_cell_op; // cell outside peaks
+    uint32_t atac_nreads_ambn_ip; // ambient inside peaks
+    uint32_t atac_nreads_ambn_op; // ambient outside peaks
 } bc_sim_t;
 
 mv_declare(bc_simv, bc_sim_t);

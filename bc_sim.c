@@ -18,10 +18,10 @@ void bc_sim_init(bc_sim_t *bc_sim){
     mv_init(&bc_sim->cell_types);
     bc_sim->rna_nreads_cell = 0;
     bc_sim->rna_nreads_ambn = 0;
-    bc_sim->atac_nreads_cell = 0;
-    bc_sim->atac_nreads_ambn = 0;
-    bc_sim->atac_npeak_cell = 0;
-    bc_sim->atac_npeak_ambn = 0;
+    bc_sim->atac_nreads_cell_ip = 0;
+    bc_sim->atac_nreads_ambn_ip = 0;
+    bc_sim->atac_nreads_cell_op = 0;
+    bc_sim->atac_nreads_ambn_op = 0;
 }
 
 void bc_sim_free(bc_sim_t *bc_sim){
@@ -196,41 +196,41 @@ mv_t(bc_simv) bc_sim_read_file(const char *file, str_map *samples,
         }
         bc_sim.rna_nreads_ambn = rna_nreads_ambn;
 
-        // get atac_nreads_cell
-        unsigned int atac_nreads_cell = str2uint(tokens[7], &cret);
+        // get atac cell inside peak reads
+        unsigned int atac_nreads_cell_ip = str2uint(tokens[7], &cret);
         if (cret < 0){
-            *ret = err_msg(-1, 0, "bc_sim_read_file: atac_nreads_cell entry %s must be unsigned int", 
+            *ret = err_msg(-1, 0, "bc_sim_read_file: atac_nr_c_ip entry %s must be unsigned int", 
                     tokens[7]);
             free(tokens);
             ks_free(&kstr);
             return bc_sim_v;
         }
-        bc_sim.atac_nreads_cell = atac_nreads_cell;
+        bc_sim.atac_nreads_cell_ip = atac_nreads_cell_ip;
 
-        // get atac_nreads_ambn
-        unsigned int atac_nreads_ambn = str2uint(tokens[8], &cret);
+        // get atac ambient inside peak reads
+        unsigned int atac_nreads_ambn_ip = str2uint(tokens[8], &cret);
         if (cret < 0){
-            *ret = err_msg(-1, 0, "bc_sim_read_file: atac_nreads_ambn entry %s must be unsigned int", 
+            *ret = err_msg(-1, 0, "bc_sim_read_file: atac_npeak_cell entry %s must be unsigned int", 
                     tokens[8]);
             free(tokens);
             ks_free(&kstr);
             return bc_sim_v;
         }
-        bc_sim.atac_nreads_ambn = atac_nreads_ambn;
+        bc_sim.atac_nreads_ambn_ip = atac_nreads_ambn_ip;
 
-        // get atac_npeak_cell
-        unsigned int atac_npeak_cell = str2uint(tokens[9], &cret);
+        // get atac cell outside peak reads
+        unsigned int atac_nreads_cell_op = str2uint(tokens[9], &cret);
         if (cret < 0){
-            *ret = err_msg(-1, 0, "bc_sim_read_file: atac_npeak_cell entry %s must be unsigned int", 
+            *ret = err_msg(-1, 0, "bc_sim_read_file: atac_nreads_ambn entry %s must be unsigned int", 
                     tokens[9]);
             free(tokens);
             ks_free(&kstr);
             return bc_sim_v;
         }
-        bc_sim.atac_npeak_cell = atac_npeak_cell;
+        bc_sim.atac_nreads_cell_op = atac_nreads_cell_op;
 
-        // get atac_npeak_ambn
-        unsigned int atac_npeak_ambn = str2uint(tokens[10], &cret);
+        // get atac ambient outside peak reads
+        unsigned int atac_nreads_ambn_op = str2uint(tokens[10], &cret);
         if (cret < 0){
             *ret = err_msg(-1, 0, "bc_sim_read_file: atac_npeak_ambn entry %s must be unsigned int", 
                     tokens[10]);
@@ -238,7 +238,7 @@ mv_t(bc_simv) bc_sim_read_file(const char *file, str_map *samples,
             ks_free(&kstr);
             return bc_sim_v;
         }
-        bc_sim.atac_npeak_ambn = atac_npeak_ambn;
+        bc_sim.atac_nreads_ambn_op = atac_nreads_ambn_op;
 
         // add to vector
         if (mv_push(bc_simv, &bc_sim_v, bc_sim) < 0){
@@ -420,6 +420,7 @@ int sc_sim_init(sc_sim_t *sc_sim) {
 
 void sc_sim_free(sc_sim_t *sc_sim){
     if (sc_sim == NULL) return;
+    printf("free 0\n");
     size_t i, n_bc = mv_size(&sc_sim->barcodes);
     for (i = 0; i < n_bc; ++i){
         bc_sim_t *bc = &mv_i(&sc_sim->barcodes, i);
@@ -427,6 +428,7 @@ void sc_sim_free(sc_sim_t *sc_sim){
     }
     mv_free(&sc_sim->barcodes);
 
+    printf("free 1\n");
     gex_prob_dstry(sc_sim->gex_prob);
     sc_sim->gex_prob = NULL;
     atac_prob_dstry(sc_sim->atac_prob);
@@ -435,9 +437,11 @@ void sc_sim_free(sc_sim_t *sc_sim){
     sc_sim->bg_sam_prob = NULL;
     sc_sim->has_bg_sam = 0;
 
+    printf("free 2\n");
     fa_seq_dstry(sc_sim->fa);
     sc_sim->fa = NULL;
 
+    printf("free 3\n");
     if (sc_sim->sr)
         bcf_sr_destroy(sc_sim->sr);
     sc_sim->sr = NULL;
@@ -586,6 +590,8 @@ int sc_sim_load_fa(sc_sim_t *sc_sim, const char *file) {
         return err_msg(-1, 0, "sc_sim_load_fa: failed to add fasta index");
     if (fa_seq_load_seq(sc_sim->fa) < 0)
         return err_msg(-1, 0, "sc_sim_load_fa: failed to load sequence");
+    if (fa_seq_get_seq_n_bp(sc_sim->fa) < 0)
+        return err_msg(-1, 0, "sc_sim_load_fa: failed to get 'N' sequences");
     return 0;
 }
 
@@ -660,8 +666,10 @@ int sc_sim_read_file(sc_sim_t *sc_sim, const char *file){
     for (i = 0; i < n_bc; ++i) {
         sc_sim->rna_nreads += mv_i(&sc_sim->barcodes, i).rna_nreads_cell;
         sc_sim->rna_nreads += mv_i(&sc_sim->barcodes, i).rna_nreads_ambn;
-        sc_sim->atac_nreads += mv_i(&sc_sim->barcodes, i).atac_nreads_cell;
-        sc_sim->atac_nreads += mv_i(&sc_sim->barcodes, i).atac_nreads_ambn;
+        sc_sim->atac_nreads += mv_i(&sc_sim->barcodes, i).atac_nreads_cell_ip;
+        sc_sim->atac_nreads += mv_i(&sc_sim->barcodes, i).atac_nreads_cell_op;
+        sc_sim->atac_nreads += mv_i(&sc_sim->barcodes, i).atac_nreads_ambn_ip;
+        sc_sim->atac_nreads += mv_i(&sc_sim->barcodes, i).atac_nreads_ambn_op;
     }
 
     fprintf(stdout, "num. RNA reads = %u, num. ATAC reads = %u\n",
@@ -761,18 +769,21 @@ int bc_sim_gen_reads(sc_sim_t *sc_sim, size_t bc_i) {
 
     uint32_t rna_cell_rd = bc_sim->rna_nreads_cell;
     uint32_t rna_ambn_rd = bc_sim->rna_nreads_ambn;
-    uint32_t atac_cell_rd_peak = bc_sim->atac_npeak_cell;
-    uint32_t atac_cell_rd_out = bc_sim->atac_nreads_cell - atac_cell_rd_peak;
-    uint32_t atac_ambn_rd_peak = bc_sim->atac_npeak_ambn;
-    uint32_t atac_ambn_rd_out = bc_sim->atac_nreads_ambn - atac_ambn_rd_peak;
+    uint32_t atac_cell_rd_peak = bc_sim->atac_nreads_cell_ip;
+    uint32_t atac_cell_rd_out = bc_sim->atac_nreads_cell_op;
+    uint32_t atac_ambn_rd_peak = bc_sim->atac_nreads_ambn_ip;
+    uint32_t atac_ambn_rd_out = bc_sim->atac_nreads_ambn_op;
 
     // input checks
     if (rna_cell_rd && bc_sim->n_cells < 1)
             return err_msg(-1, 0, "bc_sim_gen_reads: %u rna cell reads given for "
                     "an empty droplet", rna_cell_rd); 
-    if (bc_sim->atac_nreads_cell && bc_sim->n_cells < 1)
+    if (bc_sim->atac_nreads_cell_ip && bc_sim->n_cells < 1)
             return err_msg(-1, 0, "bc_sim_gen_reads: %u atac cell reads given for "
-                    "an empty droplet", bc_sim->atac_nreads_cell); 
+                    "an empty droplet", bc_sim->atac_nreads_cell_ip); 
+    if (bc_sim->atac_nreads_cell_op && bc_sim->n_cells < 1)
+            return err_msg(-1, 0, "bc_sim_gen_reads: %u atac cell reads given for "
+                    "an empty droplet", bc_sim->atac_nreads_cell_op); 
     if (bc_sim->n_cells > mv_size(&bc_sim->samples))
         return err_msg(-1, 0, "bc_sim_gen_reads: not enough samples (%u) for "
                 "droplet with %u nuclei", mv_size(&bc_sim->samples), bc_sim->n_cells); 
@@ -1017,8 +1028,8 @@ void bc_sim_print(FILE *fs, bc_sim_t *bc_sim){
 
     fprintf(fs, "\t%u\t%u\t%u\t%u\t%u\t%u\n", 
             bc_sim->rna_nreads_cell, bc_sim->rna_nreads_ambn, 
-            bc_sim->atac_nreads_cell, bc_sim->atac_nreads_ambn, 
-            bc_sim->atac_npeak_cell, bc_sim->atac_npeak_ambn);
+            bc_sim->atac_nreads_cell_ip, bc_sim->atac_nreads_cell_op,
+            bc_sim->atac_nreads_ambn_ip, bc_sim->atac_nreads_ambn_op);
     
 }
 

@@ -187,6 +187,9 @@ int iregn_add_ix(iregn_t *ireg, int ix);
  * index given the g_region.
  * Indexed overlap using htslib regidx.
  *
+ * Regions are stored 0-based, closed (so end-inclusive). In constrast,
+ * BED files are 0-based, half-open (so end-exclusive).
+ *
  * @field idx Pointer to a regidx_t object from htslib. This stores 
  *  regions read from a BED file or other tab-delimited region file.
  * @field itr Pointer to a regitr_t object from htslib. This is an 
@@ -212,6 +215,14 @@ typedef struct iregs_t {
  */
 iregs_t *iregs_init();
 void iregs_dstry(iregs_t *iregs);
+
+/* Initialize an iregs_t object. Also initialize the
+ *  regidx_t `idx` field empty. This is to manually
+ *  add regions, in contrast to adding from a BED file.
+ *
+ *  @return The allocated instance, or NULL on failure.
+ */
+iregs_t *iregs_init_empty();
 
 /* return the ith region in reg.
  *
@@ -240,15 +251,25 @@ int iregs_add2reghash(iregs_t *iregs, const char *chr, int32_t beg,
  */
 int iregs_add_bed(iregs_t *iregs, const char *fn);
 
-/* Parse the iregs added from a bed file.
- *
- * The BED file must be added first with iregs_add_bed, and then 
- * parsed with iregs_parse_bed.
+/* Parse the iregs into a reghash
  *
  * @param iregs Pointer to iregs_t object.
- * @return 0 on success, -1 if no bed file was added, -2 on error.
+ * @return 0 on success, -1 if no regions were added, -2 on error.
  */
-int iregs_parse_bed(iregs_t *iregs);
+int iregs_parse_reghash(iregs_t *iregs);
+
+/* Add a region manually to the regidx `idx` instance.
+ * If @p iregs is null or iregs->idx index is null, return 0.
+ *
+ * chr_beg points to the beginning of the character array containing
+ *  the chromosome name, chr_end points to the last character of the array.
+ *
+ * The region is 0-based and closed, end-inclusive.
+ *
+ * @return 0 on success, -1 on error
+ */
+int iregs_push_reg(iregs_t *iregs, char *chr_beg, char *chr_end,
+                   hts_pos_t beg, hts_pos_t end);
 
 /* Return overlapping iregs given a region.
  *

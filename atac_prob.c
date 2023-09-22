@@ -46,7 +46,7 @@ int atac_prob_load_peaks(atac_prob_t *ap, const char *peaks_fn){
         return err_msg(-1, 0, "atac_load_peaks: argument is null");
 
     if (iregs_add_bed(ap->peaks, peaks_fn) < 0) return -1;
-    if (iregs_parse_bed(ap->peaks) < 0) return -1;
+    if (iregs_parse_reghash(ap->peaks) < 0) return -1;
 
     return 0;
 }
@@ -178,8 +178,8 @@ int atac_prob_sample_read(sc_sim_t *sc_sim, uint16_t k, int peak, int rsam, atac
     str_map *atac_chrms = sc_sim->atac_prob->peaks->chr_map;
     int n_tries = 0, max_tries = 30;
     g_region pk_reg;
-        uint32_t pk_len;
-    int n_n;
+    uint32_t pk_len;
+    int n_n = 0;
     int chrm_invalid = 0;
     char *c_name;
     if (peak){
@@ -197,6 +197,8 @@ int atac_prob_sample_read(sc_sim_t *sc_sim, uint16_t k, int peak, int rsam, atac
                         " there is a bug", pk_reg.rid);
             chrm_invalid = str_map_ix(sc_sim->chrms, c_name) < 0;
             n_n = fa_seq_n_n(fa, c_name, pk_reg.start, pk_reg.end);
+            if (n_n < 0)
+                return -1;
             ++n_tries;
         } while (pk_len < read_pair_len || n_n > 0 || chrm_invalid);
     } else {
@@ -214,6 +216,8 @@ int atac_prob_sample_read(sc_sim_t *sc_sim, uint16_t k, int peak, int rsam, atac
                         " there is a bug", pk_reg.rid);
             chrm_invalid = str_map_ix(sc_sim->chrms, c_name) < 0;
             n_n = fa_seq_n_n(fa, c_name, pk_reg.start, pk_reg.end);
+            if (n_n < 0)
+                return -1;
             ++n_tries;
         } while (pk_len < read_pair_len || n_n > 0 || chrm_invalid);
     }

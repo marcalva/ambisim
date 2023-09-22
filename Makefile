@@ -1,7 +1,7 @@
 
-CC = $(shell which gcc)
-CFLAGS = -g -O1 -Wall -Wextra -Wfloat-equal -Wno-unused-function -fsanitize=address -fno-omit-frame-pointer
-# CFLAGS += -g -O2 -Wall -Wextra -Wfloat-equal -Wno-unused-function -Wpointer-arith -Wshadow
+# CC = $(shell which gcc)
+# CFLAGS = -g -O1 -Wall -Wextra -Wfloat-equal -Wno-unused-function -fsanitize=address -fno-omit-frame-pointer
+CFLAGS += -g -O2 -Wall -Wextra -Wfloat-equal -Wno-unused-function -Wpointer-arith -Wshadow
 
 HTSDIR = htslib
 
@@ -44,7 +44,7 @@ check_static :
 
 ambisim : check_lib check_static $(HTSDIR)/libhts.a $(OBJS)
 	echo "building ambisim"
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(OBJS) $(LIBS)
+	$(CC) $(CFLAGS) -o $@ $(OBJS) $(LDFLAGS) $(LIBS)
 
 %.o: %.c %.h
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c -o $@ $< 

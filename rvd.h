@@ -399,6 +399,7 @@ typedef struct fa_seq_t {
     cat_ds_t *chrm_prob;
     mv_t(seq_v) seqs;
     str_map *c_names;
+    iregs_t *seq_n_bp; // genomic ranges of 'N' base pairs in fasta
 } fa_seq_t;
 
 /* Allocate memory and initialize all members to empty. */
@@ -419,6 +420,13 @@ int fa_seq_add_fai(fa_seq_t *cs, const char *fa_fn);
  */
 int fa_seq_load_seq(fa_seq_t *cs);
 
+/* Get the sequences of 'N' in the fasta.
+ * Fill the `seq_n_bp` field.
+ * The sequences must be filled with `fa_seq_load_seq`.
+ * @return -1 on error, 0 on success.
+ */
+int fa_seq_get_seq_n_bp(fa_seq_t *fs);
+
 /* Select a random chromosome and return the index number.
  * Return -1 on error.
  */
@@ -433,6 +441,22 @@ int fa_seq_rand_range(fa_seq_t *fa, int len, char strand, g_region *reg);
 
 /* return 1 if range is valid, 0 if invalid, -1 on error. */
 int fa_seq_range_valid(fa_seq_t *fa, const char *c_name, int beg, int end);
+
+/* Get the genomic ranges that contain a contiguous sequence of base pairs,
+ *  such as 'N'.
+ *
+ * @param fs A fa_seq_t instance containing the genomic sequence.
+ * @param base The character base to get.
+ * @param nmin Return regions with at least this many contiguous characters.
+ * @param nmax Return regions with at most this many contiguous characters.
+ *  If a region has a longer contiguous sequence, it is not split and none of
+ *  the region is returned. Set to <= 0 to ignore.
+ * @param case_sensitive Whether to ignore the case (=0) or consider exact
+ *  matches (=1).
+ * @return An allocated iregs_t object that contains the base regions.
+ */
+iregs_t *fa_seq_char_ranges(const fa_seq_t *fs, char base, int nmin, int nmax,
+                       int case_sensitive);
 
 /* Get number of N bases in range, or return -1 on error. */
 int fa_seq_n_n(fa_seq_t *fa, const char *c_name, int beg, int end);

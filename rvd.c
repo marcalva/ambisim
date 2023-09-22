@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <stdio.h>
+#include <ctype.h>
 #include <string.h>
 #include <inttypes.h>
 #include <errno.h>
@@ -295,9 +296,9 @@ int cat_ds_set_p(cat_ds_t *d, double *p, uint64_t n){
         // sanity check
         // if already present
         if (t != s) {
-            free(t);
             fprintf(stderr, "prob=%f\n", prob);
             fprintf(stderr, "t->val = %f\ns->val = %f\n", t->val, s->val);
+            free(t);
             return err_msg(-1, 0, "cat_ds_set_p: trying to set same prob value twice");
         }
     }
@@ -1020,6 +1021,8 @@ fa_seq_t *fa_seq_alloc(){
         free(cs);
         return NULL;
     }
+
+    cs->seq_n_bp = NULL;
     return cs;
 }
 
@@ -1032,6 +1035,7 @@ void fa_seq_dstry(fa_seq_t *cs){
         free(mv_i(&cs->seqs, i));
     mv_free(&cs->seqs);
     destroy_str_map(cs->c_names);
+    iregs_dstry(cs->seq_n_bp);
     free(cs);
 }
 
@@ -1100,6 +1104,20 @@ int fa_seq_load_seq(fa_seq_t *cs){
     return 0;
 }
 
+int fa_seq_get_seq_n_bp(fa_seq_t *fs) {
+    if (fs == NULL)
+        return err_msg(-1, 0, "fa_seq_get_seq_n_bp: argument is null");
+
+    if (mv_size(&fs->seqs) == 0)
+        return err_msg(-1, 0, "fa_seq_get_seq_n_bp: no sequences loaded");
+
+    fs->seq_n_bp = fa_seq_char_ranges(fs, 'N', 1, -1, 0);
+    if (fs->seq_n_bp == NULL)
+        return -1;
+
+    return 0;
+}
+
 int fa_seq_rand_chr(fa_seq_t *fa, const char **seqn, int *chrm_len) {
     if (fa == NULL || seqn == NULL || chrm_len == NULL)
         return err_msg(-1, 0, "fa_seq_rand_chr: argument is null");
@@ -1116,13 +1134,13 @@ int fa_seq_rand_chr(fa_seq_t *fa, const char **seqn, int *chrm_len) {
     // get chromosome name
     *seqn = faidx_iseq(fa->fai, c_ix);
     if (*seqn == NULL)
-        return err_msg(-1, 0, "fa_seq_rand_range: chromosome for "
+        return err_msg(-1, 0, "fa_seq_rand_chr: chromosome for "
                               "index %i not found", c_ix);
 
     // get chromosome length
     *chrm_len = faidx_seq_len(fa->fai, *seqn);
     if (*chrm_len < 0)
-        return err_msg(-1, 0, "fa_seq_rand_range: seq len for contig "
+        return err_msg(-1, 0, "fa_seq_rand_chr: seq len for contig "
                               "%s not found", *seqn);
 
     return c_ix;
@@ -1181,12 +1199,66 @@ int fa_seq_range_valid(fa_seq_t *fa, const char *c_name, int beg, int end){
     return 1;
 }
 
+iregs_t *fa_seq_char_ranges(const fa_seq_t *fs, char base, int nmin, int nmax,
+                       int case_sensitive) {
+    iregs_t *iregs = iregs_init_empty();
+    if (iregs == NULL)
+        return NULL;
+
+    base = case_sensitive ? base : toupper(base);
+
+    // loop over chromosomes in `fs`
+    int i;
+    for (i = 0; i < fs->c_names->n; ++i) {
+        const char *seqn = faidx_iseq(fs->fai, i);
+        const char *seq = mv_i(&fs->seqs, i);
+        int chrm_len = faidx_seq_len(fs->fai, seqn);
+        hts_pos_t beg, end;
+        int j = 0;
+        while (j < chrm_len) {
+            char b = case_sensitive ? seq[j] : toupper(seq[j]);
+            beg = (hts_pos_t)j;
+            end = beg - 1;
+            while (b == base) {
+                end = (hts_pos_t)j;
+                ++j;
+                b = case_sensitive ? seq[j] : toupper(seq[j]);
+            };
+            ++j;
+            int match_len = end - beg + 1;
+            if (match_len >= nmin) {
+                if (nmax <= 0 || match_len <= nmax) {
+                    int ret;
+                    char *seqn_beg = (char *)seqn;
+                    size_t slen = strlen(seqn) - 1;
+                    char *seqn_end = seqn_beg + slen;
+                    ret = iregs_push_reg(iregs, seqn_beg, seqn_end, beg, end);
+                    if (ret < 0)
+                        return NULL;
+                }
+            }
+        }
+    }
+
+    // add to hash
+    if (iregs_parse_reghash(iregs) < 0) {
+        iregs_dstry(iregs);
+        return NULL;
+    }
+
+    return iregs;
+}
+
 int fa_seq_n_n(fa_seq_t *fa, const char *c_name, int beg, int end){
     if (fa == NULL || c_name == NULL)
         return err_msg(-1, 0, "fa_seq_n_n: argument is null");
 
+    if (fa->seq_n_bp == NULL)
+        return err_msg(-1, 0, "fa_seq_n_n: no N sequences found, "
+                       "call `fa_seq_get_seq_n_bp`");
+
     // make sure range is valid
-    int rval;
+    int rval = 0;
     rval = fa_seq_range_valid(fa, c_name, beg, end);
     if (rval < 0)
         return -1;
@@ -1194,6 +1266,15 @@ int fa_seq_n_n(fa_seq_t *fa, const char *c_name, int beg, int end){
     if (rval == 0)
         return err_msg(-1, 0, "fa_seq_n_n: range '%s:%i-%i' is invalid", 
                 c_name, beg, end);
+
+    int n_ovrlp = iregs_has_overlap(fa->seq_n_bp, c_name, beg, end);
+    if (n_ovrlp < 0)
+        return -1;
+    if (n_ovrlp > 0) {
+        int c_ix = str_map_ix(fa->c_names, (char *)c_name);
+        size_t i, len = end - beg;
+    }
+    return n_ovrlp;
 
     int c_ix = str_map_ix(fa->c_names, (char *)c_name);
 
@@ -1210,9 +1291,6 @@ char *fa_seq_rand_seq(fa_seq_t *fa, int len, int *chrm_ix, int *beg){
         return(NULL);
 
     // pick a random chromosome
-    int n_tries = 0, max_tries = 30;
-    int chrm_len = 0;
-    const char *seqn;
     g_region reg;
     init_g_region(&reg);
     char *seq = NULL;
@@ -1221,7 +1299,6 @@ char *fa_seq_rand_seq(fa_seq_t *fa, int len, int *chrm_ix, int *beg){
         int ret = fa_seq_rand_range(fa, len, '+', &reg);
         if (ret < 0)
             return NULL;
-        int qlen = 0;
         free(seq);
         seq = strndup(mv_i(&fa->seqs, reg.rid) + reg.start, len);
 

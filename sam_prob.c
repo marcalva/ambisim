@@ -26,6 +26,7 @@ void sam_prob_dstry(sam_prob_t *sp) {
 
     destroy_str_map(sp->samples);
     cat_ds_dstry(sp->sam_probs);
+    free(sp);
 }
 
 int sam_prob_load_probs(sam_prob_t *sp, const char *fn) {
@@ -48,11 +49,19 @@ int sam_prob_load_probs(sam_prob_t *sp, const char *fn) {
     if (sp->samples == NULL)
         return -1;
 
+    // flatten array
+    double *arr_f = malloc(nrow * sizeof(double));
+    int i;
+    for (i = 0; i < nrow; ++i)
+        arr_f[i] = arr[i][0];
+    for (i = 0; i < nrow; ++i)
+        fprintf(stdout, "%i=%f\n", i, arr_f[i]);
+
     sp->sam_probs = cat_ds_alloc();
     if (sp->sam_probs == NULL)
         return -1;
 
-    if (cat_ds_set_p(sp->sam_probs, arr[0], nrow) < 0)
+    if (cat_ds_set_p(sp->sam_probs, arr_f, nrow) < 0)
         return -1;
 
     free(arr);

@@ -1,5 +1,6 @@
 
 #include <stdlib.h>
+#include "htslib/regidx.h"
 #include "str_util.h"
 #include "htslib/hts.h"
 #include "htslib/khash.h"
@@ -174,6 +175,19 @@ void iregs_dstry(iregs_t *iregs){
     free(iregs);
 }
 
+iregs_t *iregs_init_empty() {
+    iregs_t *iregs = iregs_init();
+    if (iregs == NULL)
+        return NULL;
+    iregs->idx = regidx_init(NULL, NULL, NULL, 0, NULL);
+    if (iregs->idx == NULL) {
+        err_msg(0, 0, "iregs_init_empty: failed to initialize regidx");
+        iregs_dstry(iregs);
+        return NULL;
+    }
+    return iregs;
+}
+
 int iregs_add2reghash(iregs_t *iregs, const char *chr, int32_t beg, int32_t end, char strand){
     if (iregs == NULL) return(0);
     if (iregs->reg == NULL){
@@ -221,17 +235,33 @@ int iregs_add_bed(iregs_t *iregs, const char *fn){
 }
 
 // TODO: add strand capacity
-int iregs_parse_bed(iregs_t *iregs){
+int iregs_parse_reghash(iregs_t *iregs){
     if (iregs == NULL || iregs->idx == NULL) return(0);
     regitr_t *itr = regitr_init(iregs->idx);
     if (itr == NULL)
-        return err_msg(-1, 0, "iregs_parse_bed: failed to init regitr");
+        return err_msg(-1, 0, "iregs_parse_reghash: failed to init regitr");
     while (regitr_loop(itr))
         if (iregs_add2reghash(iregs, itr->seq, (int32_t)itr->beg, 
-                    (int32_t)itr->end, '.') < 0) return(-1);
+                    (int32_t)itr->end, '.') < 0){
+            regitr_destroy(itr);
+            iregs->itr = NULL;
+            return(-1);
+        }
     regitr_destroy(itr);
     iregs->itr = NULL;
     return(0);
+}
+
+int iregs_push_reg(iregs_t *iregs, char *chr_beg, char *chr_end,
+                   hts_pos_t beg, hts_pos_t end) {
+    if (iregs == NULL || iregs->idx == NULL) return(0);
+    int ret;
+    ret = regidx_push(iregs->idx, chr_beg, chr_end, beg, end, NULL);
+    if (ret < 0) {
+        return err_msg(-1, 0, "iregs_push_reg: failed to push region "
+                       "%s-%s:%"PRIu64"-%"PRIu64, chr_beg, chr_end, beg, end);
+    }
+    return 0;
 }
 
 // TODO: add strand capacity
@@ -263,7 +293,7 @@ int iregs_overlap(iregs_t *iregs, const char *chr, int32_t beg, int32_t end,
         if (k_ix == kh_end(iregs->hash))
             return err_msg(-1, 0, "iregs_overlap: could not find region in hash table, "
                     "there may be a bug");
-        int ix       = kh_val(iregs->hash, k_ix);
+        int ix = kh_val(iregs->hash, k_ix);
         if (ix >= iregs->n)
             return err_msg(-1, 0, "iregs_overlap: ix %i > n %i", ix, iregs->n);
         if (mv_push(int_vec, overlaps, ix) < 0) return(-1);
