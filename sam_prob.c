@@ -54,8 +54,6 @@ int sam_prob_load_probs(sam_prob_t *sp, const char *fn) {
     int i;
     for (i = 0; i < nrow; ++i)
         arr_f[i] = arr[i][0];
-    for (i = 0; i < nrow; ++i)
-        fprintf(stdout, "%i=%f\n", i, arr_f[i]);
 
     sp->sam_probs = cat_ds_alloc();
     if (sp->sam_probs == NULL)
@@ -64,8 +62,13 @@ int sam_prob_load_probs(sam_prob_t *sp, const char *fn) {
     if (cat_ds_set_p(sp->sam_probs, arr_f, nrow) < 0)
         return -1;
 
+    for (i = 0; i < nrow; ++i)
+        free(arr[i]);
     free(arr);
+    for (i = 0; i < nrow; ++i)
+        free(rownames[i]);
     free(rownames);
+    free(arr_f);
     
     return 0;
 }

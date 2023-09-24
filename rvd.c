@@ -445,19 +445,20 @@ int *binom_ds_sample(binom_ds_t *x, int *len) {
         return NULL;
     }
 
-    bflg_t flgs;
-    bflg_init_empty(&flgs);
-    bflg_init(&flgs, x->size);
-
     int i, rv = binom_ds_rv(x);
     *len = rv;
     if (rv == 0)
         return NULL;
+
     int *p = pmalloc(rv * sizeof(int), "binom_ds_sample");
     if (p == NULL) {
         err_msg(-1, 0, "binom_ds_sample: failed to allocate memory");
         return NULL;
     }
+
+    bflg_t flgs;
+    bflg_init_empty(&flgs);
+    bflg_init(&flgs, x->size);
 
     int xs = x->size-1;
     for (i = 0; i < rv; ++i) {
@@ -529,6 +530,7 @@ int int_range_subset(int_range_t *int_rng, int_range_t *out, size_t pos,
 
 void seq_range_free(seq_range_t *seq_rng){
     if (seq_rng == NULL) return;
+    int_range_init(&seq_rng->range);
     free(seq_rng->seq);
     mv_free(&seq_rng->av);
     seq_rng->rc = 0;
@@ -741,6 +743,7 @@ void int_ranges_init(int_ranges_t *ranges){
 void int_ranges_free(int_ranges_t *ranges){
     if (ranges == NULL) return;
     mv_free(&ranges->rv);
+    ranges->len = 0;
 }
 
 int int_ranges_add_range(int_ranges_t *ranges, int_range_t range){
@@ -860,11 +863,15 @@ int seq_ranges_subset(seq_ranges_t *seq_rngs, seq_ranges_t *out,
     size_t q_beg = (size_t)pos;
     size_t q_len = len;
     size_t q_end = q_beg + q_len;
+    size_t r_len = (size_t)(seq_rngs->len);
 
-    if (q_end > (size_t)seq_rngs->len)
-        return err_msg(-1, 0, "seq_ranges_subset: end of subset is greater "
-                "than the requested length");
-    
+    if (q_end > r_len) {
+        fprintf(stderr, "seq_ranges_subset: invalid subset of length %zu "
+                "at position %i in sequence of length %zu\n",
+                len, pos, r_len);
+        return -1;
+    }
+
     int n_vars = 0;
     size_t i;
     size_t sr_beg = 0, sr_end = 0; // begin and end index of sequence range
@@ -1346,7 +1353,7 @@ int fa_seq_seq_range(fa_seq_t *fa, const char *c_name, int_range_t range,
         return err_msg(-1, 0, "fa_seq_seq_range: contig '%s' is null", c_name);
     memcpy(qseq, fa_seq + range.beg, qlen);
     qseq[qlen] = '\0';
-    if (strlen(qseq) == 0) {
+    if (qseq == NULL) {
         err_msg(0, 1, "fa_seq_seq_range: query sequence has length 0 "
                 "for region '%s:%i-%i'. Fasta contig length is '%zu",
                 c_name, range.beg, range.end, strlen(fa_seq));

@@ -302,8 +302,8 @@ int isoform_mat_mrna_range(isoform_t *iso, int_ranges_t *ranges){
     
     ml_node_t(exon_list) *e_node;
     for (e_node = ml_begin(&iso->exons); 
-            e_node; 
-            e_node = ml_node_next(e_node)){
+    e_node; 
+    e_node = ml_node_next(e_node)){
         exon_t exon = ml_node_val(e_node);
         int_range_t range;
         range.beg = exon.beg;
@@ -417,10 +417,14 @@ int gex_sample_read(sc_sim_t *sc_sim, uint16_t k, int rsam, rna_read_t *rna_read
         // get the sequence from gene/isoform range
         seq_ranges_dstry(rna_seq_rng);
         rna_seq_rng = NULL;
-        if (fa_seq_seq_ranges(fa, gene_chrm, iso_pos_rng, &rna_seq_rng) < 0)
+        if (fa_seq_seq_ranges(fa, gene_chrm, iso_pos_rng, &rna_seq_rng) < 0 ||
+        rna_seq_rng == NULL)
             return err_msg(-1, 0, "gex_sample_read: failed to get range from fasta");
-        if (rna_seq_rng == NULL)
-            return err_msg(-1, 0, "gex_sample_read: failed to get range from fasta");
+
+        if (rna_seq_rng->len != iso_pos_rng.len) {
+            return err_msg(-1, 0, "gex_sample_read: rna range len %i != iso range len %i",
+                           rna_seq_rng->len, iso_pos_rng.len);
+        }
 
         // sample a read range of length read_len uniformly
         int q_len = rna_seq_rng->len - (int)read_len + 1;
@@ -443,19 +447,11 @@ int gex_sample_read(sc_sim_t *sc_sim, uint16_t k, int rsam, rna_read_t *rna_read
             int end = mv_i(&read_seq_rng->rv, seq_ix).range.end - 1;
             str_len += strlen(mv_i(&read_seq_rng->rv, seq_ix).seq);
             seq_len += end - beg + 1;
-            if (end - beg > 100)
-                printf("longer than expected sequence of end-beg = %i\n", end - beg);
             int n_add = fa_seq_n_n(fa, gene_chrm, beg, end);
             if (n_add < 0)
                 return -1;
             n_n += n_add;
         }
-        if (seq_len > 100)
-            printf("longer than expected sequence of seq length %zu\n", seq_len);
-        if (str_len > 100)
-            printf("longer than expected sequence of str length %zu\n", str_len);
-        // printf("str len: %zu\n", str_len);
-        // printf("seq len: %zu\n", seq_len);
 
         if (n_n > 0)
             continue;
